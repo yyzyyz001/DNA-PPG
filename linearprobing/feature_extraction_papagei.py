@@ -19,8 +19,9 @@ from models.resnet import ResNet1D, ResNet1DMoE
 from models.transformer import TransformerSimple
 from augmentations import ResampleSignal
 from torch_ecg._preprocessors import Normalize
+import shutil
 
-def compute_signal_embeddings(model, path, case, batch_size, device, output_idx, resample=False, normalize=True, fs=None, fs_target=None, is_mt_regress=False):
+def compute_signal_embeddings(model, path, case, batch_size, device, output_idx, resample=False, normalize=True, fs=None, fs_target=None, is_mt_regress=False, ifMAE=False):
     segments = os.listdir(os.path.join(path, case))
     embeddings = []
     model.eval()
@@ -34,21 +35,31 @@ def compute_signal_embeddings(model, path, case, batch_size, device, output_idx,
             if resample:
                 batch_signal = resample_batch_signal(batch_signal, fs, fs_target)
             batch_signal = torch.Tensor(batch_signal).unsqueeze(dim=1).to(device)
-            outputs = model(batch_signal)
-            embeddings.append(outputs[output_idx].cpu().detach().numpy())
-
+            
+            if ifMAE:
+                # print("batch_signal", batch_signal.shape)
+                outputs = model.feature_extractor1D(batch_signal)
+                # print("outputs", outputs.shape)
+                embeddings.append(outputs.cpu().detach().numpy())
+            else:
+                # print("batch_signal", batch_signal.shape)
+                outputs = model(batch_signal)
+                # print("outputs", outputs[output_idx].shape)
+                embeddings.append(outputs[output_idx].cpu().detach().numpy())
+                
     embeddings = np.vstack(embeddings)
-
+    # print("embeddings", embeddings.shape)
     return embeddings
 
-def save_embeddings(path, child_dirs, save_dir, model, batch_size, device, output_idx, resample=False, normalize=True, fs=None, fs_target=None, is_mt_regress=False):
+def save_embeddings(path, child_dirs, save_dir, model, batch_size, device, output_idx, resample=False, normalize=True, fs=None, fs_target=None, is_mt_regress=False, ifMAE=False):
     dict_embeddings = {}
 
-    if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
-        print(f"[INFO] Creating directory: {save_dir}")
-    else:
-        print(f"[INFO] {save_dir} already exists")
+    if os.path.exists(save_dir):
+        shutil.rmtree(save_dir)
+        print(f"[INFO] Deleted existing directory: {save_dir}")
+
+    os.mkdir(save_dir)
+    print(f"[INFO] Creating directory: {save_dir}")
 
     for i in tqdm(range(len(child_dirs))):
         case = str(child_dirs[i])
@@ -63,6 +74,7 @@ def save_embeddings(path, child_dirs, save_dir, model, batch_size, device, outpu
                                             fs=fs,
                                             fs_target=fs_target,
                                             is_mt_regress=is_mt_regress,
+                                            ifMAE=ifMAE
                                             )
                                     
         print(f"[INFO] Saving file {case} to {save_dir}")

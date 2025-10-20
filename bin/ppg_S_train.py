@@ -7,7 +7,7 @@ import numpy as np
 import os 
 import torch 
 import sys
-sys.path.append("../papagei-foundation-model/")
+sys.path.append("../SoftCL/")
 import augmentations
 import joblib
 import torch.multiprocessing as mp

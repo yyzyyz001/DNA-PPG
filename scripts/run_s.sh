@@ -1,1 +1,0 @@
-CUDA_VISIBLE_DEVICES=0,3,4,6 python ppg_S_train.py

@@ -39,7 +39,11 @@ def get_data_for_ml(df, dict_embeddings, case_name, label, level="patient"):
     if level == "patient":
         df = df.drop_duplicates(subset=[case_name])
 
+    # print(dict_embeddings.keys4())
     for key in dict_embeddings.keys():
+        # print(f"Processing key: {key}")
+        # print(df.columns)
+        # print(df[case_name].head())
         if level == "patient":
             y.append(df[df.loc[:, case_name] == key].loc[:, label].values[0])
         else:    
@@ -210,6 +214,9 @@ def batch_load_signals(path, case, segments):
     batch_signal = []
     for s in segments:
         batch_signal.append(joblib.load(os.path.join(path, case, str(s))))
+    # print("batch_signal列表：", batch_signal)
+    # for i, signal in enumerate(batch_signal):
+    #     print(f"元素 {i} 的形状：{np.shape(signal)}")
     return np.vstack(batch_signal)
 
 def load_model_without_module_prefix(model, checkpoint_path):

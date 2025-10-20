@@ -1,0 +1,1 @@
+python SoftCLtrain.py --seed 42 --device 3 
