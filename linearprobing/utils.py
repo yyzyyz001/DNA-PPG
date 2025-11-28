@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import ast
 import joblib
+import argparse
 import os
 import sys
 sys.path.append("../")
@@ -39,14 +40,10 @@ def get_data_for_ml(df, dict_embeddings, case_name, label, level="patient"):
     if level == "patient":
         df = df.drop_duplicates(subset=[case_name])
 
-    # print(dict_embeddings.keys4())
     for key in dict_embeddings.keys():
-        # print(f"Processing key: {key}")
-        # print(df.columns)
-        # print(df[case_name].head())
         if level == "patient":
             y.append(df[df.loc[:, case_name] == key].loc[:, label].values[0])
-        else:    
+        elif level == "subject":    
             y.append(df[df.loc[:, case_name] == key].loc[:, label].values)
     X = np.vstack([k.cpu().detach().numpy() if type(k) == torch.Tensor else k for k in dict_embeddings.values()])
     y = np.hstack(y)

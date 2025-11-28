@@ -72,7 +72,7 @@ class MBConvBlock(torch.nn.Module):
 
 
 class EfficientNetB0(torch.nn.Module):
-    def __init__(self, in_channels=3):
+    def __init__(self, in_channels=1, out_dim=512):
         super(EfficientNetB0, self).__init__()
 
         # Initial stem convolution
@@ -121,9 +121,9 @@ class EfficientNetB0(torch.nn.Module):
         self.mlp_head = torch.nn.Sequential(
             torch.nn.Linear(1280, 512),
             torch.nn.ReLU(),
-            torch.nn.Linear(512, 256),
-            torch.nn.ReLU(),
-            torch.nn.Linear(256, 128)            
+            torch.nn.Linear(512, out_dim),
+            # torch.nn.ReLU(),
+            # torch.nn.Linear(256, 128)            
         )
         # Global average pooling and classifier
         # 

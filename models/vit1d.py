@@ -1,4 +1,6 @@
 import torch
+# torch.backends.cudnn.benchmark = True
+# torch.set_float32_matmul_precision('high')
 import torch.nn as nn
 import numpy as np
 from timm.models.vision_transformer import Block
@@ -149,6 +151,15 @@ class Vit1DEncoder(nn.Module):
         x = self.norm(x)
         return x
 
+    def forward(self, x, pool_type= None):
+        tokens = self._encode(x)
+        pool = pool_type or self.pool_type
+        if pool == "cls":
+            return tokens[:, 0, :]
+        if pool == "mean":
+            return tokens[:, 1:, :].mean(dim=1)
+        raise ValueError(...)
+
     # -------- public APIs --------
     @torch.no_grad()
     def forward_tokens(self, x: torch.Tensor):
@@ -173,8 +184,6 @@ class Vit1DEncoder(nn.Module):
             return tokens[:, 0, :]             # (B, E)
         elif pool == "mean":
             return tokens[:, 1:, :].mean(dim=1)
-        else:
-            raise ValueError(f"Unsupported pool_type: {pool}. Use 'cls' or 'mean'.")
 
 
 if __name__ == "__main__":
@@ -184,10 +193,10 @@ if __name__ == "__main__":
     encoder = Vit1DEncoder(
         ts_len=T,
         patch_size=10,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
-        mlp_ratio=4.0,
+        embed_dim=512,
+        depth=4,
+        num_heads=8,
+        mlp_ratio=3.0,
         pool_type="cls"  # or "mean"
     )
 

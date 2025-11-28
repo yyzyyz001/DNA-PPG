@@ -9,6 +9,8 @@ from collections import deque
 import random
 from typing import List, Dict, Optional, Iterator
 import pandas as pd
+from tqdm import tqdm
+import time
 
 # 固定顺序的 5 个 numeric 信号键名
 NUMERIC_KEYS = [
@@ -90,7 +92,7 @@ class PPGSegmentDataset(Dataset):
             "sample_id": str
         }
     """
-    def __init__(self, index_csv: str, normalize: bool = False, verify_files: bool = True):
+    def __init__(self, index_csv, normalize=False, verify_files=True, ssl_transform=None, sup_transform=None):
         """
         参数：
           - index_csv: 通过 build_index_csv 生成的清单文件路径
@@ -99,6 +101,8 @@ class PPGSegmentDataset(Dataset):
         """
         self.index_csv = index_csv
         self.normalize = normalize
+        self.ssl_transform = ssl_transform
+        self.sup_transform = sup_transform
 
         rows = _read_index_csv(index_csv)
         if verify_files:
@@ -130,16 +134,21 @@ class PPGSegmentDataset(Dataset):
             else:
                 signal = np.zeros_like(signal)
         signal = torch.tensor(signal).unsqueeze(0)  # [1, T]
+        ssl_signal = torch.as_tensor(self.ssl_transform(signal), dtype=torch.float32)
+        sup_signal = torch.as_tensor(self.sup_transform(signal), dtype=torch.float32)
 
         # === 2) numeric 特征（固定顺序） ===
         numeric_dict = data.get("numeric", {})
         numeric_vals: List[float] = []
         for key in NUMERIC_KEYS:
             val = numeric_dict.get(key, np.nan)
-            # 若是序列则取均值(将10s的数据压缩成一个平均值)
-            val = np.nanmean(val) if isinstance(val, (list, np.ndarray)) else val
+            
+            if isinstance(val, (list, np.ndarray)):
+                arr = np.asarray(val, dtype=float)
+                val = np.nan if np.isnan(arr).all() else np.nanmean(arr)
+            
             # 对血压数据进行阈值清洗
-            if key.startswith("Solar8000/ART_") and (not np.isnan(val)) and (val < 0 or val > 150):
+            if key.startswith("Solar8000/ART_") and (not np.isnan(val)) and (val < 0):  # or val > 150):
                 val = -1
             numeric_vals.append(val)
         numeric = torch.tensor(numeric_vals, dtype=torch.float32)
@@ -150,6 +159,8 @@ class PPGSegmentDataset(Dataset):
 
         return {
             "signal": signal,
+            "ssl_signal": ssl_signal,
+            "sup_signal": sup_signal,
             "subject_id": subject_id,
             "numeric": numeric,
             "sample_id": sample_id,
@@ -222,13 +233,16 @@ def get_dataloader_from_index(
     num_workers: int = 4,
     normalize: bool = False,
     verify_files: bool = True,
-    seed=42
+    seed=42,
+    ssl_transform = None,
+    sup_transform = None,
 ):
     """
     使用 CSV 清单构建 DataLoader
 
     """
-    dataset = PPGSegmentDataset(index_csv=index_csv, normalize=normalize, verify_files=verify_files)
+
+    dataset = PPGSegmentDataset(index_csv=index_csv, normalize=normalize, verify_files=verify_files, ssl_transform=ssl_transform, sup_transform=sup_transform)
     sampler = SubjectBatchSampler(dataset, batch_size=batch_size, seed=seed)
     dataloader = DataLoader(
         dataset,
@@ -247,11 +261,31 @@ if __name__ == "__main__":
 
     dataloader = get_dataloader_from_index(
         index_csv=index_csv,
-        batch_size=32,
+        batch_size=256,
         num_workers=8,
         normalize=True,
         verify_files=True
     )
+
+
+    # counts_all_nan_or_neg1 = torch.zeros(len(NUMERIC_KEYS))
+    # total_batches = 0
+
+    # for batch in tqdm(dataloader, desc="Scanning batches", unit="batch", total=len(dataloader)):
+    #     numeric = batch["numeric"]
+    #     # 如果 dataloader 可能把张量放到 GPU，这里记得 .cpu()
+    #     # numeric = numeric.cpu()
+
+    #     mask_nan = torch.isnan(numeric)
+    #     mask_neg1 = numeric.eq(-1)
+
+    #     counts_all_nan_or_neg1 += (mask_nan | mask_neg1).all(dim=0)
+    #     total_batches += 1
+
+    # ratios_all_nan_or_neg1 = counts_all_nan_or_neg1.float() / total_batches
+
+    # for idx, key in enumerate(NUMERIC_KEYS):
+    #     print(f"{key}: 全NaN或-1的批次占比 = {ratios_all_nan_or_neg1[idx]:.4f}")
 
     for batch in dataloader:
         print("signal:", batch["signal"].shape)
@@ -260,3 +294,4 @@ if __name__ == "__main__":
         print("subject_id:", batch["subject_id"])
         print("sample_id:", batch["sample_id"])
         break
+

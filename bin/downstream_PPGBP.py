@@ -38,7 +38,6 @@ def get_csv(download_dir = "../data/downstream/PPG-BP", seed=42):
     fs_target = 125
 
     ### 
-
     filenames = [f.split("_")[0] for f in os.listdir(main_dir)]
 
     norm = Normalize(method='z-score')
