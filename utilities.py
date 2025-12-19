@@ -3,11 +3,13 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
 import torch
+import torch.fft
 import joblib
 import numpy as np 
 import os 
 import pandas as pd
 from tqdm import tqdm
+from models.resnet import TFCResNet
 
 def delete_from_dictionary(path, wave_list):
     """
@@ -98,7 +100,7 @@ def load_and_generate_longer_signal(directory, no_of_segments):
 
     return np.hstack(signal)
 
-def get_data_info(dataset_name, prefix="", usecolumns=None):
+def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
     """
     This function returns meta data about the dataset such as user/ppg dataframes,
     column name of user_id, and the raw ppg directory.
@@ -159,91 +161,113 @@ def get_data_info(dataset_name, prefix="", usecolumns=None):
         df_train = pd.read_csv(f"{prefix}../data/mimic/train_clean.csv", usecols=usecols)
         df_val = pd.read_csv(f"{prefix}../data/mimic/val_clean.csv", usecols=usecols)
         df_test = pd.read_csv(f"{prefix}../data/mimic/test_clean.csv", usecols=usecols)
-
-
-    if dataset_name == "sdb":
-        case_name = "subjectNumber"
-        path = f"{prefix}../data/sdb/ppg"  
-        if usecolumns is not None:
-            usecols = np.concatenate([[case_name], usecolumns])
-        else:
-            usecols = None 
-
-        df_train = pd.read_csv(f"{prefix}../data/sdb/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/sdb/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/sdb/test.csv", usecols=usecols)
-
-        df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(4))
-        df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(4))
-        df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(4))
     
     if dataset_name == "ppg-bp":
+        seed = 32
         case_name = "subject_ID"
-        path = f"{prefix}../data/ppg-bp/ppg"  
+        path = f"{prefix}../data/downstream/ppg-bp/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
 
-        df_train = pd.read_csv(f"{prefix}../data/ppg-bp/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/ppg-bp/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/ppg-bp/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
 
         df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(4))
         df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(4))
         df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(4))
     
     if dataset_name == "ecsmp":
-        case_name = "ID"
-        path = f"{prefix}../data/ecsmp/ppg"
+        seed = 42
+        case_name = "subject_ID"
+        path = f"{prefix}../data/downstream/ecsmp/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
         
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
 
-        df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(4))
-        df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(4))
-        df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(4))
+        df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(3))
+        df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(3))
+        df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(3))
     
     if dataset_name == "wesad":
-        case_name = "subjects"
-        path = f"{prefix}../data/wesad/ppg"
+        seed = 32
+        case_name = "subject_ID"
+        path = f"{prefix}../data/downstream/wesad/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
         
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
+
+        df_train[case_name] = df_train.apply(lambda row: f"{row[case_name]}_{row['segment_name']}", axis=1)
+        df_val[case_name]   = df_val.apply(lambda row: f"{row[case_name]}_{row['segment_name']}", axis=1)
+        df_test[case_name]  = df_test.apply(lambda row: f"{row[case_name]}_{row['segment_name']}", axis=1)
+
     
     if dataset_name == "dalia":
-        case_name = "subjects"
-        path = f"{prefix}../data/dalia/ppg"
+        seed = 42
+        case_name = "subject_ID"
+        path = f"{prefix}../data/downstream/dalia/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
         
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
     
+    if dataset_name == "vv":
+        seed = 42
+        case_name = "subject_ID"
+        path = f"{prefix}../data/downstream/vv/datafile/ppg"
+        if usecolumns is not None:
+            usecols = np.concatenate([[case_name], usecolumns])
+        else:
+            usecols = None 
+        
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
+
+    if dataset_name == "sdb":
+        seed = 32
+        case_name = "subject_ID"
+        path = f"{prefix}../data/downstream/sdb/datafile/ppg"  
+        if usecolumns is not None:
+            usecols = np.concatenate([[case_name], usecolumns])
+        else:
+            usecols = None 
+
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
+
+        # df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(4))
+        # df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(4))
+        # df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(4))
+
     if dataset_name == "marsh":
         case_name = "subjects"
-        path = f"{prefix}../data/marsh/ppg"
+        path = f"{prefix}../data/downstream/marsh/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
         
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
 
         df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(4))
         df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(4))
@@ -251,27 +275,27 @@ def get_data_info(dataset_name, prefix="", usecolumns=None):
         
     if dataset_name == "numom2b":
         case_name = "subjects"
-        path = f"{prefix}../data/numom2b/ppg"
+        path = f"{prefix}../data/downstream/numom2b/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
         
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
     
     if dataset_name == "bidmc":
         case_name = "subjects"
-        path = f"{prefix}../data/bidmc/ppg"
+        path = f"{prefix}../data/downstream/bidmc/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
         
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
 
         df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(2))
         df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(2))
@@ -279,27 +303,71 @@ def get_data_info(dataset_name, prefix="", usecolumns=None):
     
     if dataset_name == "mimicAF":
         case_name = "subjects"
-        path = f"{prefix}../data/mimicAF/ppg"
+        path = f"{prefix}../data/downstream/mimicAF/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
         
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
+        df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
+        df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
+        df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
     
-    if dataset_name == "vv":
-        case_name = "subjects"
-        path = f"{prefix}../data/vv/ppg"
-        if usecolumns is not None:
-            usecols = np.concatenate([[case_name], usecolumns])
-        else:
-            usecols = None 
-        
-        df_train = pd.read_csv(f"{prefix}../data/{dataset_name}/train.csv", usecols=usecols)
-        df_val = pd.read_csv(f"{prefix}../data/{dataset_name}/val.csv", usecols=usecols)
-        df_test = pd.read_csv(f"{prefix}../data/{dataset_name}/test.csv", usecols=usecols)
-
     return df_train, df_val, df_test, case_name, path
 
+
+def load_tfc_model(model_path, device):
+    model_config = {
+        'base_filters': 32,
+        'kernel_size': 3,
+        'stride': 2,
+        'groups': 1,
+        'n_block': 18,
+        'n_classes': 512,
+    }
+    
+    model = TFCResNet(model_config=model_config)
+    
+    checkpoint = torch.load(model_path, map_location='cpu')
+    if 'model' in checkpoint:
+        state_dict = checkpoint['model']
+    else:
+        state_dict = checkpoint
+    
+    # 去除 DDP 可能产生的 'module.' 前缀
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        name = k.replace("module.", "") if k.startswith("module.") else k
+        new_state_dict[name] = v
+        
+    model.load_state_dict(new_state_dict, strict=False)
+    model.to(device)
+    model.eval() # 冻结 BN 层
+    
+    # 彻底冻结梯度，节省显存
+    for param in model.parameters():
+        param.requires_grad = False
+        
+    return model
+
+def extract_tfc_features(model, signals):
+    """
+    TFC 特征提取辅助函数 (与 compute_signal_embeddings 对齐)
+    signals: [B, 1, T] - 预期已经过 Z-score 归一化
+    Returns: [B, D_tfc] (z_time 与 z_freq 的拼接, Tensor类型)
+    """
+    if model is None:
+        return None
+        
+    x_time = signals.float()
+    
+    # 1. 频域提取 (保持一致: 全频谱 abs)
+    x_freq = torch.fft.fft(x_time, dim=-1).abs()
+    
+    with torch.no_grad():
+        # 2. 前向传播
+        h_t, z_t, h_f, z_f = model(x_time, x_freq)
+        # 3. 特征拼接 (修改点: 使用 z 而不是 h)
+        emb = torch.cat((z_t, z_f), dim=1)
+        
+    return emb

@@ -1,23 +1,15 @@
 import torch
-import torch.nn.functional as F
 import numpy as np
 import sys
-import pandas as pd
 sys.path.append("../../../papagei-foundation-model/")
 import torch.fft as fft
-import torch.nn as nn
-import torch.optim as optim
 import augmentations
 import joblib
 
-from tqdm import tqdm
-from training_pospair import harmonize_datasets
 from transforms import DataTransform_FD, DataTransform_TD
-from torch.utils.data import Dataset, DataLoader
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from torch.utils.data import Dataset
 from functools import lru_cache
 from torch_ecg._preprocessors import Normalize
-from models.resnet import BasicBlock, MyConv1dPadSame, MyMaxPool1dPadSame
 
 
 class TFCDataset(Dataset):

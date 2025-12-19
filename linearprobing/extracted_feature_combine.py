@@ -23,7 +23,7 @@ def segment_avg_to_dict(path, level):
         data = joblib.load(os.path.join(path, f))
         if level == "patient":
             dict_data[f.split(".")[0]] = np.mean(data, axis=0)
-        else:
+        else:  #segment level
             dict_data[f.split(".")[0]] = data
 
     return dict_data

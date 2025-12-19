@@ -37,9 +37,12 @@ def compute_signal_embeddings(model, path, case, segments, batch_size, device, r
             batch_signal_freq = fft.fft(batch_signal).abs()
             
             h_time, z_time, h_freq, z_freq = model(batch_signal, batch_signal_freq)
-            z_time = z_time.cpu().detach().numpy()
-            z_freq = z_freq.cpu().detach().numpy()
-            embeddings.append(np.concatenate((z_time, z_freq), axis=1))
+            # z_time = z_time.cpu().detach().numpy()
+            # z_freq = z_freq.cpu().detach().numpy()
+            # embeddings.append(np.concatenate((z_time, z_freq), axis=1))
+            h_time = h_time.cpu().detach().numpy()
+            h_freq = h_freq.cpu().detach().numpy()
+            embeddings.append(np.concatenate((h_time, h_freq), axis=1))
 
     embeddings = np.vstack(embeddings)
 

@@ -4,6 +4,9 @@ from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 import math
 import random
+from models.resnet import TFCResNet
+import numpy as np
+
 
 def _pairwise_cosine_sim(emb):  # emb: [B, D]
     emb = F.normalize(emb, dim=1)
@@ -72,29 +75,43 @@ def _physio_weight_matrix(numeric, sigma=1.0, invalid_vals=(-1.0,)):
 
 
 
-def loss_ssl(features, signals, subject_ids, alpha=0.5, positive_only=True):
+def loss_ssl(features, subject_ids, tfc_features=None ,alpha=0.5, positive_only=True):
     """
     features: Tensor [B, D] (model embeddings, 单次前向得到)
-    signals:  Tensor [B, 1, T]
-    subject_ids: LongTensor [B]
+    subject_ids: List[str] or Tuple[str] (字符串列表，长度为 B)
+    tfc_features: Tensor [B, D_tfc]
     """
     B = features.size(0)
     sim = _pairwise_cosine_sim(features)             # [B,B]
     probs = _softmax_without_diag(sim)         # P_i(j)，不含温度项
-
-     # masks
     device = features.device
+    
+     # masks
     eye_mask = torch.eye(B, dtype=torch.bool, device=device)
-    subj = subject_ids.view(-1, 1)
-    pos_mask = (subj == subj.t()) & ~eye_mask         # 正样本：同 subject，且 i!=j
-    neg_mask = (~pos_mask) & ~eye_mask                # 负样本：不同 subject，且 i!=j
+    
+    s_arr = np.array(subject_ids)
+    mask_np = (s_arr[:, None] == s_arr[None, :])
+    same_subject_mask = torch.from_numpy(mask_np).to(device)
+
+    pos_mask = same_subject_mask & ~eye_mask  # 正样本：同一个 Subject 且 不是自己(i!=j)
+    neg_mask = (~pos_mask) & ~eye_mask  # 负样本：不是同一个 Subject 且 不是自己
 
     W = torch.zeros_like(sim)
     W[pos_mask] = 1.0
 
+    # === TFC 软负样本策略 ===
+    # 如果提供了 TFC 特征，则在负样本区域引入基于时频相似度的软权重
+    if tfc_features is not None:
+        tfc_sim = _pairwise_cosine_sim(tfc_features)
+        # 处理策略：使用 ReLU 截断，相似度越高，权重越大；不相似或负相关的（<=0）保持权重为 0。
+        tfc_weights = F.relu(tfc_sim)
+        # 仅将 TFC 权重应用在“负样本”位置 (不同 Subject), 这样做的效果是：即使是不同的人，如果 PPG 时频形态很像，我们也不把它们当作纯粹的负样本推远，而是赋予一定的正向权重进行保留。
+        W[neg_mask] = tfc_weights[neg_mask]
+
+    # 4. 归一化权重矩阵
     W = _row_normalize(W)
 
-    # 加权交叉熵： - sum_j W(i,j) * log P_i(j)
+    # 5. 计算加权交叉熵 (InfoNCE with Soft Targets)
     logP = torch.log(probs + 1e-12)
     loss_i = -(W * logP).sum(dim=1)                   # [B]
     loss = loss_i.mean()

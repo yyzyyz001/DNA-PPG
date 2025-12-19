@@ -14,14 +14,16 @@ from models.transformer import TransformerSimple
 from models.resnet import ResNet1D
 from models.vit1d import Vit1DEncoder
 from models.efficientnet import EfficientNetB0
+from models.resnet import TFCResNet
 from losses import loss_ssl, loss_sup
 from torch.utils.data import DataLoader
-from Mydataset import build_index_csv, get_dataloader_from_index
+from Mydataset import build_index_csv, get_dataloader
 from tqdm import tqdm
 import augmentations
 from torchvision import transforms
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
+from utilities import load_tfc_model, extract_tfc_features 
 
 
 def seed_everything(seed=42):
@@ -69,25 +71,29 @@ def save_model(model, directory, filename, content):
     out_path = os.path.join(root, f"{filename}_{content}.pt")
     torch.save({"model": sd}, out_path)
 
-def train_step(model, batch, optimizer, device, alpha=0.5, tau=0.2, sigma=1.0, sup_weight = 0.0, ssl_weight=1.0, mode="vit1d"):
+def train_step(model, batch, optimizer, device, tfc_model=None, alpha=0.5, tau=0.2, sigma=1.0, sup_weight = 0.0, ssl_weight=1.0, mode="vit1d"):
     signal      = batch["signal"].to(device)        # [B,1,T]
     ssl_signal  = batch["ssl_signal"].to(device)    # [B,1,T]
     sup_signal  = batch["sup_signal"].to(device)    # [B,1,T]
     numeric     = batch["numeric"].to(device)       # [B,5]
-    subject_ids = batch["subject_id"].to(device)    # [B]
+    subject_ids = batch["subject_id"]               # [B]
     sample_ids  = batch["sample_id"]
 
     if mode == "vit1d":
         ssl_embeddings = model(ssl_signal, "cls")  ### vit1d [B,768]
         sup_embeddings = model(sup_signal, "cls")  ### vit1d [B,768]
     elif mode == "resnet1d":
-        _, ssl_embeddings = model(ssl_signal)  ### resnet1d [B,512]
-        _, sup_embeddings = model(sup_signal)  ### resnet1d [B,512]
+        ssl_embeddings, _ = model(ssl_signal)  ### resnet1d [B,512]
+        sup_embeddings, _ = model(sup_signal)  ### resnet1d [B,512]
     elif  mode == "efficient1d":
         ssl_embeddings = model(ssl_signal)  ### efficient1d [B,512]
         sup_embeddings = model(sup_signal)  ### efficient1d [B,512]
 
-    loss_ssl_val = loss_ssl(ssl_embeddings, signal, subject_ids, alpha=alpha, positive_only=True)
+    tfc_features = None
+    if tfc_model is not None:
+        tfc_features = extract_tfc_features(tfc_model, signal)  ## 这里使用未增强的 signal 提取 TFC 特征
+
+    loss_ssl_val = loss_ssl(ssl_embeddings, subject_ids, tfc_features, alpha=alpha, positive_only=True)
     loss_sup_val = loss_sup(sup_embeddings, numeric, tau=tau, sigma=sigma)
     
     loss = ssl_weight * loss_ssl_val + sup_weight * loss_sup_val
@@ -107,6 +113,12 @@ def training(model, train_dataloader, optimizer, args, directory, filename, writ
     device = f"cuda:{args.device}" 
     model.to(device)
     os.makedirs(os.path.join("../data/results/SoftCL/", directory), exist_ok=True)
+
+    # 加载tfc模型
+    tfc_model = None
+    if args.use_tfc:
+        tfc_model = load_tfc_model(args.tfc_path, device)
+        print(f"[{device}] TFC Teacher loaded successfully.")
 
     num_batches_total = len(train_dataloader)              
     total_steps = args.epochs * max(1, num_batches_total)
@@ -143,6 +155,7 @@ def training(model, train_dataloader, optimizer, args, directory, filename, writ
                 batch=batch,
                 optimizer=optimizer,
                 device=device,
+                tfc_model=tfc_model,
                 alpha=args.alpha, tau=args.tau, sigma=args.sigma,
                 sup_weight=sup_weight_now, 
                 ssl_weight=ssl_weight_now,
@@ -195,12 +208,15 @@ def training(model, train_dataloader, optimizer, args, directory, filename, writ
     return dict_log
 
 def main(args):
-    seed_everything(42)
+    seed_everything(args.seed)
     lr = args.lr
 
-    root_dir = args.rootDir
+    data_roots = {
+        "vitaldb": "../data/pretrain/vitaldb/numericPPG",
+        "mesa": "../data/pretrain/mesa/numericPPG"
+    }
     index_csv = args.indexCsv
-    build_index_csv(root_dir, index_csv, overwrite=False)
+    build_index_csv(data_roots, index_csv, overwrite=False)
 
     zero_prob_dictionary = {'g_p': 0.0, 'n_p': 0.0, 'w_p':0.0, 'f_p':0.0, 's_p':0.0, 'c_p':0.0}
     ssl_prob_dictionary = {'g_p': 0.30, 'n_p': 0.0, 'w_p':0.20, 'f_p':0.0, 's_p':0.30, 'c_p':0.50}
@@ -227,12 +243,12 @@ def main(args):
     ssl_transform = transforms.Compose(ssl_transform)
     sup_transform = transforms.Compose(sup_transform)
 
-    dataloader = get_dataloader_from_index(
+    dataloader = get_dataloader(
         index_csv=index_csv,
+        source_selection=args.data_source,
         batch_size=args.batch_size,
         num_workers=8,
         normalize=True,
-        verify_files=True,
         seed=args.seed,
         ssl_transform=ssl_transform,
         sup_transform=sup_transform
@@ -307,6 +323,8 @@ def main(args):
                    filename=model_filename,
                    writer=writer)
 
+    save_dir = f"../data/results/SoftCL/{timestamp}"
+    os.makedirs(save_dir, exist_ok=True)
     joblib.dump(dict_log, f"../data/results/SoftCL/{timestamp}/{model_filename}_log.p")
     
 
@@ -319,7 +337,6 @@ if __name__ == "__main__":
     parser.add_argument("--anomaly", action="store_true")
     parser.add_argument("--model", type=str, default="vit1d", choices=["vit1d", "resnet1d", "efficient1d"], help="Backbone to use: vit1d or resnet1d")
     parser.add_argument("--model_size", type=str, default="ViT-B/16", choices=["10M", "ViT-B/16"], help="vit1d")
-
 
     parser.add_argument("--logdir", type=str, default="../data/results/SoftCL/runs", help="TensorBoard event files root directory")
     parser.add_argument("--no-tb", action="store_true", help="Disable TensorBoard logging")
@@ -334,14 +351,17 @@ if __name__ == "__main__":
     parser.add_argument("--alpha", type=float, default=0.5)
     parser.add_argument("--tau", type=float, default=0.2)
     parser.add_argument("--sigma", type=float, default=1.0)
-    parser.add_argument("--rootDir", type=str, default="../data/pretrain/vitaldb/numericPPG")
-    parser.add_argument("--indexCsv", type=str, default="../data/index/numericPPG_index.csv")
+    parser.add_argument("--data-source", type=str, default="all", choices=["mesa", "vitaldb", "all"], help="Select dataset source: mesa, vitaldb, or all")  ### 数据源选择
+    parser.add_argument("--indexCsv", type=str, default="../data/index/mesaVital_index.csv")
     parser.add_argument("--sup-weight", type=float, default=0.7)
     parser.add_argument("--sup_warmup_ratio", type=float, default=0.5)
     parser.add_argument("--only_sup", action="store_true")
     parser.add_argument("--only_ssl", action="store_true")
     parser.add_argument("--transform_ssl", action="store_true")
     parser.add_argument("--transform_sup", action="store_true")
+
+    parser.add_argument("--use-tfc", action="store_true", help="Enable TFC guidance for soft negative sampling")
+    parser.add_argument("--tfc-path", type=str, default="../data/results/baselines/vital/tfc_hlai0k7t_2025_12_14_12_28_48_best.pt")
     
     args = parser.parse_args()
 

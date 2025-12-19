@@ -9,3 +9,6 @@ python SoftCLtrain.py --seed 42 --device 2 --epoch 50 --model "resnet1d"
 python SoftCLtrain.py --seed 42 --device 1 --epoch 50 --model "resnet1d" --batch 128
 python SoftCLtrain.py --seed 42 --device 2 --epoch 50 --model "resnet1d" --transform_ssl
 python SoftCLtrain.py --seed 42 --device 1 --epoch 50 --model "resnet1d" --transform_ssl --transform_sup
+python SoftCLtrain.py --epoch 20 --seed 42 --device 2 --model "resnet1d" --transform_ssl --transform_sup --use-tfc --data-source "all"
+python SoftCLtrain.py --epoch 20 --seed 42 --device 3 --model "resnet1d" --transform_ssl --transform_sup --data-source "all"
+python SoftCLtrain.py --epoch 20 --seed 42 --device 0 --model "resnet1d" --transform_ssl --transform_sup --use-tfc --data-source "vitaldb"

@@ -39,8 +39,6 @@ def binary_classification(dataset_name, model_name, linear_model, label, func, c
                                                              concat=False,
                                                              string_convert=string_convert,
                                                              content=content)
-        X_test = np.concatenate((X_test, X_val))
-        y_test = np.concatenate((y_test, y_val))
         
     if percent is not None:
         size = int(len(X_train))
@@ -56,10 +54,10 @@ def binary_classification(dataset_name, model_name, linear_model, label, func, c
     if linear_model == "lr":
         estimator = LogisticRegression()
         param_grid = {
-            'penalty': ['l1', 'l2'],
+            'penalty': ['l2'],
             'C': [0.01, 0.1, 1, 10, 100],
             'solver': ['lbfgs'],
-            'max_iter': [100, 200]
+            'max_iter': [500, 1000]
         }
 
     if linear_model == "rf":
@@ -72,13 +70,26 @@ def binary_classification(dataset_name, model_name, linear_model, label, func, c
             'min_samples_leaf': [1, 2],      
             }
 
-    results = classification_model(estimator=estimator,
-                                param_grid=param_grid,
-                                X_train=X_train,
-                                y_train=y_train,
-                                X_test=X_test,
-                                y_test=y_test,
-                                bootstrap=True)
+    if concat == False:
+        results = classification_model(estimator=estimator,
+                                    param_grid=param_grid,
+                                    X_train=X_train,
+                                    y_train=y_train,
+                                    X_val=X_val,
+                                    y_val=y_val,
+                                    X_test=X_test,
+                                    y_test=y_test,
+                                    bootstrap=True,
+                                    concat=concat)
+    else:
+        results = classification_model(estimator=estimator,
+                                    param_grid=param_grid,
+                                    X_train=X_train,
+                                    y_train=y_train,
+                                    X_test=X_test,
+                                    y_test=y_test,
+                                    bootstrap=True,
+                                    concat=concat)
 
     results['test_keys'] = test_keys
     results['model'] = model_name
@@ -87,7 +98,7 @@ def binary_classification(dataset_name, model_name, linear_model, label, func, c
     
     return results
 
-def multilabel_classification(dataset_name, model_name, label, func, content, concat, level="patient", string_convert=True):
+def multilabel_classification(dataset_name, model_name, label, func, content, concat=True, level="patient", string_convert=True):
 
 
     if concat:
@@ -107,8 +118,6 @@ def multilabel_classification(dataset_name, model_name, label, func, content, co
                                                              concat=False,
                                                              string_convert=string_convert,
                                                              content=content)
-        X_test = np.concatenate((X_test, X_val))
-        y_test = np.concatenate((y_test, y_val))
     
     estimator = RandomForestClassifier()
     param_grid = {
@@ -153,7 +162,36 @@ def multilabel_classification(dataset_name, model_name, label, func, content, co
 
     return results
 
-def get_results(model, config):
+def print_config_metrics(model_name, label_display, results, concat):
+    metrics = [("auc", "AUC"), ("f1", "F1")]
+
+    if not concat:
+        for split_name, split_display in [("val", "VAL"), ("test", "TEST")]:
+            for metric_key, metric_display in metrics:
+                base = f"{split_name}_{metric_key}"              # e.g. 'val_auc'
+                value = results[base]
+                lower = results[f"{base}_lower_ci"]
+                upper = results[f"{base}_upper_ci"]
+
+                print(
+                    f"{model_name} | {label_display} | {split_display}: "
+                    f"{metric_display} {value:.4f} | 95% CI [{lower:.4f}, {upper:.4f}]"
+                )
+    else:
+        split_display = "TEST"
+        for metric_key, metric_display in metrics:
+            value = results[metric_key]
+            lower = results[f"{metric_key}_lower_ci"]
+            upper = results[f"{metric_key}_upper_ci"]
+
+            print(
+                f"{model_name} | {label_display} | {split_display}: "
+                f"{metric_display} {value:.4f} | 95% CI [{lower:.4f}, {upper:.4f}]"
+            )
+
+
+
+def get_results(args, config):
     all_results = []
     func = get_data_for_ml
     for key in config.keys():
@@ -162,25 +200,26 @@ def get_results(model, config):
         print("######################")
         if configuration['classification_type'] == "binary":
             results = binary_classification(dataset_name=configuration['dataset'],
-                                           model_name=model,
+                                           model_name=args.model,
                                            linear_model=configuration['linear_model'],
                                            label=configuration['label'],
                                            func=func,
                                            content=configuration['content'],
                                            level=configuration['level'],
                                            string_convert=configuration['string_convert'],
-                                           concat=configuration['concat'],
+                                           concat=args.concat,
                                            percent=configuration['percent'])
-            
+            print_config_metrics(model_name=args.model, label_display=configuration['label'], results=results, concat=args.concat,)
+
         if configuration['classification_type'] == "multi":
             results = multilabel_classification(dataset_name=configuration['dataset'],
-                                           model_name=model,
+                                           model_name=args.model,
                                            label=configuration['label'],
                                            func=func,
                                            content=configuration['content'],
                                            level=configuration['level'],
                                            string_convert=configuration['string_convert'],
-                                           concat=configuration['concat'])
+                                           concat=args.concat)
         all_results.append(results)
         
     return all_results
@@ -188,33 +227,34 @@ def get_results(model, config):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('model', type=str, help="model directory")
-    parser.add_argument('classification_type', type=str)
+    parser.add_argument('--model', type=str, help="model directory")
+    parser.add_argument('--classification_type', type=str, default="binary")
+    parser.add_argument('--concat', type=bool, default=False)
     args = parser.parse_args()
     percent = None
 
     if args.classification_type == "binary":
         config = {
-            0: {"dataset": "sdb", "label": "AHI", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-            1: {"dataset": "vital", "label": "icu_days", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-            2: {"dataset": "mesa", "label": "nsrr_ever_smoker", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-            3: {"dataset": "mimic", "label": "DOD", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-            4: {"dataset": "ppg-bp", "label": "Hypertension", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-            5: {"dataset": "wesad", "label": "valence", "classification_type": "binary", "linear_model": "lr", "level": "segment", "content": "_segment", "string_convert": False, 'concat': False, 'percent': percent}, 
-            6: {"dataset": "wesad", "label": "arousal", "classification_type": "binary", "linear_model": "lr", "level": "segment", "content": "_segment", "string_convert": False, 'concat': False, 'percent': percent}, 
-            7: {"dataset": "ecsmp", "label": "TMD", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent}, 
-            # 8: {"dataset": "ecsmp", "label": "sds", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent}, 
-            9: {"dataset": "numom2b", "label": "stdyvis", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
+            0: {"dataset": "sdb", "label": "AHI", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            # 1: {"dataset": "vital", "label": "icu_days", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            # 2: {"dataset": "mesa", "label": "nsrr_ever_smoker", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            # 3: {"dataset": "mimic", "label": "DOD", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            # 4: {"dataset": "ppg-bp", "label": "Hypertension", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            # 5: {"dataset": "wesad", "label": "valence", "classification_type": "binary", "linear_model": "lr", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent}, 
+            # 6: {"dataset": "wesad", "label": "arousal", "classification_type": "binary", "linear_model": "lr", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent}, 
+            # 7: {"dataset": "ecsmp", "label": "TMD", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent}, 
+            # 8: {"dataset": "ecsmp", "label": "sds", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent}, 
+            # 9: {"dataset": "numom2b", "label": "stdyvis", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
             }
 
-    if args.classification_type == "multi":   
-        config = {
-            0: {"dataset": "vital", "label": "optype", "classification_type": "multi", "linear_model": "rf", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False},
-            1: {"dataset": "dalia", "label": "activity", "classification_type": "multi", "linear_model": "rf", "level": "segment", "content": "_segment", "string_convert": False, 'concat': False},
-            2: {"dataset": "wesad", "label": "affect", "classification_type": "multi", "linear_model": "rf", "level": "segment", "content": "_segment", "string_convert": False, 'concat': False},   
-        }
+    if args.classification_type == "multi":   ## 默认concat为True
+            config = {
+                0: {"dataset": "vital", "label": "optype", "classification_type": "multi", "linear_model": "rf", "level": "patient", "content": "patient", "string_convert": False},
+                1: {"dataset": "dalia", "label": "activity", "classification_type": "multi", "linear_model": "rf", "level": "subject", "content": "subject", "string_convert": False},
+                2: {"dataset": "wesad", "label": "affect", "classification_type": "multi", "linear_model": "rf", "level": "subject", "content": "subject", "string_convert": False},   
+            }
 
-    all_results = get_results(args.model, config)
+
+    all_results = get_results(args, config)
     df = pd.DataFrame(all_results)
-    # df.to_csv(f"../../results/{args.model}_{args.classification_type}_{str(percent)}_{str(int(time()))}.csv", index=False)
     df.to_csv(f"../../results/{args.model}_{args.classification_type}_{str(int(time()))}.csv", index=False)

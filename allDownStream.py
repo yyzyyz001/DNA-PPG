@@ -48,7 +48,6 @@ def split_by_subject_and_save(df, args, split_dir):
     save_subset("val", val_ids)
     save_subset("test", test_ids)
 
-
 def preprocess_ppg_segment(signal, args, norm):
     """
     输入维度(args.fs_original,)
@@ -162,7 +161,6 @@ def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir):
     
     split_by_subject_and_save(df, args, split_dir)
 
-
 def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir):
     window_size = int(10 * args.fs_original)
     all_rows = []
@@ -220,7 +218,6 @@ def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir):
     print(df.head())
 
     split_by_subject_and_save(df, args, split_dir)
-
 
 def get_csv(args):
     download_dir = args.download_dir
@@ -558,6 +555,6 @@ if __name__ == "__main__":
 
     get_csv(args)
 
-    splits = load_splits(args)
+    # splits = load_splits(args)
 
-    evaluate(args, splits)
+    # evaluate(args, splits)

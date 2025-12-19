@@ -40,8 +40,21 @@ def get_data_for_ml(df, dict_embeddings, case_name, label, level="patient"):
     if level == "patient":
         df = df.drop_duplicates(subset=[case_name])
 
+    # print("=== get_data_for_ml DEBUG ===")
+    # print("df shape:", df.shape)
+    # print("case_name:", case_name, "| dtype:", df[case_name].dtype)
+    # print("label:", label)
+    # print("df[[case_name, label]].head():")
+    # print(df[[case_name, label]].head())
+    # print("yyz")
+    # print(df[df.loc[:, case_name] == 'subject156'])
+    # print(df[df.loc[:, case_name] == 'subject156'].loc[:, label])
+    # print(df[df.loc[:, case_name] == 'subject156'].loc[:, label].values[0])
+    # print("yyz2")
+
     for key in dict_embeddings.keys():
         if level == "patient":
+            # print(key)
             y.append(df[df.loc[:, case_name] == key].loc[:, label].values[0])
         elif level == "subject":    
             y.append(df[df.loc[:, case_name] == key].loc[:, label].values)
@@ -92,7 +105,7 @@ def extract_labels(y, label, binarize_val = None):
     Returns:
         y (np.array): label array ready for trianing/eval
     """
-    
+    return y
     if label == "age":
         y = np.where(y > 50, 1, 0)
     
@@ -274,28 +287,30 @@ def convert_keys_to_strings(d):
     return {str(k).zfill(4): v for k, v in d.items()}
 
 
-def load_linear_probe_dataset_objs(dataset_name, model_name, label, func, content, level, string_convert=True, classification=True, concat=True, prefix="../"):
+def load_linear_probe_dataset_objs(dataset_name, model_name, label, func, content, level, string_convert=True, classification=True, concat=True, prefix="../", seed=42):
     
-    df_train, df_val, df_test, case_name, _ = get_data_info(dataset_name=dataset_name, prefix=prefix, usecolumns=[label])
+    df_train, df_val, df_test, case_name, _ = get_data_info(dataset_name=dataset_name, prefix=prefix, seed=seed)
     
     if string_convert:
-        dict_train = convert_keys_to_strings(joblib.load(f"{prefix}../data/{dataset_name}/features/{model_name}/dict_train{content}.p"))
-        dict_val = convert_keys_to_strings(joblib.load(f"{prefix}../data/{dataset_name}/features/{model_name}/dict_val{content}.p"))
-        dict_test = convert_keys_to_strings(joblib.load(f"{prefix}../data/{dataset_name}/features/{model_name}/dict_test{content}.p"))
+        dict_train = convert_keys_to_strings(joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_train_{content}.p"))
+        dict_val = convert_keys_to_strings(joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_val_{content}.p"))
+        dict_test = convert_keys_to_strings(joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_test_{content}.p"))
     else:
-        dict_train = joblib.load(f"{prefix}../data/{dataset_name}/features/{model_name}/dict_train{content}.p")
-        dict_val = joblib.load(f"{prefix}../data/{dataset_name}/features/{model_name}/dict_val{content}.p")
-        dict_test = joblib.load(f"{prefix}../data/{dataset_name}/features/{model_name}/dict_test{content}.p")
+        dict_train = joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_train_{content}.p")
+        dict_val = joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_val_{content}.p")
+        dict_test = joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_test_{content}.p")
 
-    binarize_val = None
-    if label in ['bmi', 'es', 'cr', 'TMD']:
-        binarize_val = np.median(df_train.loc[:, label].values)
+    # binarize_val = None
+    # if label in ['bmi', 'es', 'cr', 'TMD']:
+    #     binarize_val = np.median(df_train.loc[:, label].values)
     
+    # print(dict_train.keys())
     X_train, y_train, train_keys = func(df=df_train, 
                             dict_embeddings=dict_train,
                             case_name=case_name,
                             label=label,
                             level=level)
+    
     X_val, y_val, val_keys  = func(df=df_val, 
                                 dict_embeddings=dict_val, 
                                 case_name=case_name,
@@ -309,14 +324,12 @@ def load_linear_probe_dataset_objs(dataset_name, model_name, label, func, conten
                                 level=level)
     if classification:
         y_train = extract_labels(y=y_train, 
-                                label=label,
-                                binarize_val=binarize_val)
+                                label=label)
         y_val = extract_labels(y=y_val, 
-                            label=label,
-                            binarize_val=binarize_val)
+                            label=label)
         y_test = extract_labels(y=y_test, 
-                                label=label,
-                                binarize_val=binarize_val)
+                                label=label)
+    
     if concat:
         X_train = np.concatenate((X_train, X_val))
         y_train = np.concatenate((y_train, y_val))

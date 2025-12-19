@@ -2,44 +2,104 @@ import numpy as np
 from tqdm import tqdm
 import sys
 import pandas as pd
+import wandb
 sys.path.append("../../../papagei-foundation-model/")
-from transforms import DataTransform_FD, DataTransform_TD
-from tfc_utils import NTXentLoss_poly, TFCDataset
-import torch.fft as fft
-import torch.nn as nn
-import torch.optim as optim
+sys.path.append("../../")
+from tfc_utils import NTXentLoss_poly
+from Mydataset import PPGSegmentDataset, build_index_csv
 import augmentations
+from torchvision import transforms
 import joblib
 import torch
-import torch.multiprocessing as mp
-import wandb
-import random
-import os 
-from torch.utils.data.distributed import DistributedSampler
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
+import os
 from tqdm import tqdm
-from training_pospair import harmonize_datasets
-from transforms import DataTransform_FD, DataTransform_TD
-from torch.utils.data import Dataset, DataLoader
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from functools import lru_cache
-from torch_ecg._preprocessors import Normalize
-from models.resnet import BasicBlock, MyConv1dPadSame, MyMaxPool1dPadSame, TFCResNet
-from training_distributed import save_model
+from torch.utils.data import DataLoader
+from models.resnet import TFCResNet
 from datetime import datetime
 
-def ddp_setup(rank, world_size):
-    """
-    Args:
-        rank: Unique identifier of each process
-        world_size: Total number of processes
-    """
-    os.environ["MASTER_ADDR"] = "127.0.0.1"
-    os.environ["MASTER_PORT"] = "12255"
-    init_process_group(backend="nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
+def _get_base_model(model):
+    base = model
+    if hasattr(base, "module"):    # DataParallel / DDP
+        base = base.module
+    if hasattr(base, "_orig_mod"): # torch.compile 包装
+        base = base._orig_mod
+    return base
 
+def save_model(model, directory, filename, content, step=None, prefix=None):
+    # prefix is used to adjust the path relative to the script location
+    # Assuming we want to save to ../../../data/results/SoftCL/ (relative to script)
+    # which matches ../data/results/SoftCL/ relative to SoftCL root
+    
+    root = os.path.join("/data/zhangyang/results/SoftCL", directory)
+    os.makedirs(root, exist_ok=True)
+
+    # 取“未包装”的原始模块，导出干净权重并保存到 CPU
+    base = _get_base_model(model)
+    sd = {k: v.detach().cpu() for k, v in base.state_dict().items()}
+    
+    save_dict = {"model": sd}
+    if step is not None:
+        save_dict["step"] = step
+
+    out_path = os.path.join(root, f"{filename}_{content}.pt")
+    torch.save(save_dict, out_path)
+    print(f"Model saved to {out_path}")
+
+def train_step_save(epoch, model, dataloader, batch_size, optimizer, device):
+
+    """
+    One training epoch for a SimCLR model
+
+    Args:
+        model (torch.nn.Module): Model to train
+        dataloader (torch.utils.data.Dataloader): A training dataloader with signals
+        criterion (torch.nn.<Loss>): Loss function to optimizer
+        optimizer (torch.optim): Optimizer to modify weights
+        device (string): training device; use GPU
+
+    Returns:
+        train_loss (float): The training loss for the epoch
+    """
+    global loss, loss_t, loss_f, l_TF, loss_c
+
+    model.to(device)
+    model.train()
+
+    batch = next(iter(dataloader))
+    data = batch["ssl_signal"].float().to(device)
+    aug1 = batch["sup_signal"].float().to(device)
+    
+    # Check input shape
+    if data.shape[-1] != 1250:
+        raise ValueError(f"Input data shape mismatch: expected 1250, got {data.shape[-1]}")
+
+    data_f = torch.fft.fft(data, dim=-1).abs()
+    aug1_f = torch.fft.fft(aug1, dim=-1).abs()
+
+    """Produce embeddings"""
+    h_t, z_t, h_f, z_f = model(data, data_f)
+    h_t_aug, z_t_aug, h_f_aug, z_f_aug = model(aug1, aug1_f)
+
+    """Compute Pre-train loss"""
+    """NTXentLoss: normalized temperature-scaled cross entropy loss. From SimCLR"""
+    nt_xent_criterion = NTXentLoss_poly(device, batch_size, 0.2, True)
+
+    loss_t = nt_xent_criterion(h_t, h_t_aug)
+    loss_f = nt_xent_criterion(h_f, h_f_aug)
+    l_TF = nt_xent_criterion(z_t, z_f) # this is the initial version of TF loss
+
+
+    l_1, l_2, l_3 = nt_xent_criterion(z_t, z_f_aug), nt_xent_criterion(z_t_aug, z_f), nt_xent_criterion(z_t_aug, z_f_aug)
+    loss_c = (1 + l_TF - l_1) + (1 + l_TF - l_2) + (1 + l_TF - l_3)
+
+    lam = 0.2
+    loss = lam*(loss_t + loss_f) + l_TF
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    return loss.item()
 
 def train_step(epoch, model, dataloader, batch_size, optimizer, device):
 
@@ -60,11 +120,17 @@ def train_step(epoch, model, dataloader, batch_size, optimizer, device):
 
     model.to(device)
     model.train()
-    dataloader.sampler.set_epoch(epoch)
 
-    data, aug1, data_f, aug1_f = next(iter(dataloader))
-    data, aug1 = data.float().to(device), aug1.float().to(device)
-    data_f, aug1_f = data_f.float().to(device), aug1_f.float().to(device)
+    batch = next(iter(dataloader))
+    data = batch["ssl_signal"].float().to(device)
+    aug1 = batch["sup_signal"].float().to(device)
+    
+    # Check input shape
+    if data.shape[-1] != 1250:
+        raise ValueError(f"Input data shape mismatch: expected 1250, got {data.shape[-1]}")
+
+    data_f = torch.fft.fft(data, dim=-1).abs()
+    aug1_f = torch.fft.fft(aug1, dim=-1).abs()
 
     """Produce embeddings"""
     h_t, z_t, h_f, z_f = model(data, data_f)
@@ -76,14 +142,24 @@ def train_step(epoch, model, dataloader, batch_size, optimizer, device):
 
     loss_t = nt_xent_criterion(h_t, h_t_aug)
     loss_f = nt_xent_criterion(h_f, h_f_aug)
-    l_TF = nt_xent_criterion(z_t, z_f) # this is the initial version of TF loss
+    
+    def dist(u, v):
+        return 1 - torch.nn.functional.cosine_similarity(u, v, dim=-1)
 
+    d_TF = dist(z_t, z_f)          # 原始时频距离 (Anchor - Positive)
+    d_TF_aug = dist(z_t, z_f_aug)  # 时域原样本 - 频域增强 (Anchor - Negative 1)
+    d_T_aug_F = dist(z_t_aug, z_f) # 时域增强 - 频域原样本 (Anchor - Negative 2)
 
-    l_1, l_2, l_3 = nt_xent_criterion(z_t, z_f_aug), nt_xent_criterion(z_t_aug, z_f), nt_xent_criterion(z_t_aug, z_f_aug)
-    loss_c = (1 + l_TF - l_1) + (1 + l_TF - l_2) + (1 + l_TF - l_3)
+    # Triplet Margin Loss: max(d_pos - d_neg + margin, 0)
+    delta = 1.0 # margin
+    loss_c_1 = torch.clamp(d_TF - d_TF_aug + delta, min=0).mean()
+    loss_c_2 = torch.clamp(d_TF - d_T_aug_F + delta, min=0).mean()
 
-    lam = 0.2
-    loss = lam*(loss_t + loss_f) + l_TF
+    loss_c = loss_c_1 + loss_c_2
+
+    # 3. 组合最终 Loss
+    lam = 0.5 # 论文常用参数
+    loss = lam * (loss_t + loss_f) + (1 - lam) * loss_c
 
     optimizer.zero_grad()
     loss.backward()
@@ -111,6 +187,7 @@ def training(model, epochs, train_dataloader, batch_size, optimizer, device, dir
 
     dict_log = {'train_loss': []}
     best_loss = float('inf')
+    save_interval = max(1, epochs // 10)
     
     for step in tqdm(range(epochs), desc="Training Progress"):
         epoch_loss = train_step(epoch=step,
@@ -120,44 +197,68 @@ def training(model, epochs, train_dataloader, batch_size, optimizer, device, dir
                                 optimizer=optimizer,
                                 device=device)
 
-        if wandb and device == "cuda:0":
+        if wandb:
             wandb.log({"Train Loss": epoch_loss})
 
         dict_log['train_loss'].append(epoch_loss)
         print(f"[{device}] Step: {step+1}/{epochs} | Train Loss: {epoch_loss:.4f}")
 
-        if device == "cuda:0" and epoch_loss < best_loss:
+        if epoch_loss < best_loss:
             best_loss = epoch_loss
-            print(f"Saving model to: {directory}")
-            content = f"step{step+1}_loss{epoch_loss:.4f}"
-            save_model(model, directory, filename, content, prefix="../../")
+            print(f"Saving best model to: {directory}")
+            # Overwrite best model
+            save_model(model, directory, filename, "best", step=step+1, prefix="../../")
 
-        if device == "cuda:0" and step == epochs - 1:
-            print(f"Saving model to: {directory}")
+        if (step + 1) % save_interval == 0:
+            print(f"Saving checkpoint to: {directory}")
             content = f"step{step+1}_loss{epoch_loss:.4f}"
-            save_model(model, directory, filename, content, prefix="../../") 
+            save_model(model, directory, filename, content, step=step+1, prefix="../../")
+
+        if step == epochs - 1:
+            print(f"Saving last model to: {directory}")
+            content = f"last_step{step+1}_loss{epoch_loss:.4f}"
+            save_model(model, directory, filename, content, step=step+1, prefix="../../") 
 
     return dict_log
 
-def main(rank, world_size, epochs, batch_size):
-    ddp_setup(rank, world_size)
+def main(epochs, batch_size, device_id=0):
     
     shuffle = True
-    distributed = True
     lr = 0.0001
-    fs_target = 125
+    
     print("Loading datasets...")
-    df = harmonize_datasets(prefix="../../")
+    data_roots = {
+        "vitaldb": "/data/zhangyang/physionet.org/files/vitaldb/1.0.0/numericPPG",
+        "mesa": "/data/zhangyang/numericPPG"
+    }
+    index_csv = "/data/zhangyang/physionet.org/files/vitaldb/1.0.0/index/numericPPG_index_tfc_all.csv"
+    
+    build_index_csv(data_roots, index_csv, overwrite=False)
 
-    config = {'jitter_ratio':0.1}
-    dataset = TFCDataset(df=df,
-                        fs_target=fs_target,
-                        config=config)
-    sampler = DistributedSampler(dataset, shuffle=shuffle)
+    ssl_prob_dictionary = {'g_p': 0.30, 'n_p': 0.0, 'w_p':0.20, 'f_p':0.0, 's_p':0.30, 'c_p':0.50}
+    transform_list = augmentations.get_transformations(
+        g_p=ssl_prob_dictionary['g_p'],
+        n_p=ssl_prob_dictionary['n_p'],
+        w_p=ssl_prob_dictionary['w_p'],
+        f_p=ssl_prob_dictionary['f_p'],
+        s_p=ssl_prob_dictionary['s_p'],
+        c_p=ssl_prob_dictionary['c_p']
+    )
+    transform = transforms.Compose(transform_list)
+
+    dataset = PPGSegmentDataset(
+        index_csv=index_csv,
+        source_sel="all",
+        normalize=True,
+        verify=True,
+        ssl_tf=transform,
+        sup_tf=transform
+    )
+
     train_dataloader = DataLoader(dataset=dataset,
                     batch_size=batch_size,
                     num_workers=0,
-                    sampler=sampler,
+                    shuffle=shuffle,
                     drop_last=True)
     
     model_config = {'base_filters': 32,
@@ -169,11 +270,9 @@ def main(rank, world_size, epochs, batch_size):
                 }
     model = TFCResNet(model_config=model_config)
     
-    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    device = "cuda:" + str(rank) 
+    device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
     print(device)
     model.to(device)
-    model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=True)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 
      ### Experiment Tracking ###
@@ -185,13 +284,14 @@ def main(rank, world_size, epochs, batch_size):
          "epochs": epochs,
          "batch_size": batch_size}
 
-    # wandb.init(project=experiment_name,
-    #         config=config | model_config, 
-    #         name=name,
-    #         group=group_name)
-    wandb = None
-    # run_id = wandb.run.id
-    run_id = "afgh"
+    wandb.init(project=experiment_name,
+            config=config | model_config, 
+            name=name,
+            group=group_name)
+    
+    run_id = wandb.run.id
+    # wandb = None
+    # run_id = "afgh"
     time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     model_filename = f'{experiment_name}_{name}_{run_id}_{time}'
 
@@ -204,14 +304,15 @@ def main(rank, world_size, epochs, batch_size):
                    batch_size=batch_size,
                    filename=model_filename,
                    wandb=wandb)
-    # wandb.finish()
-    joblib.dump(dict_log, f"../../../models/{time}/{model_filename}_log.p")
+    wandb.finish()
     
-    destroy_process_group()
+    log_dir = os.path.join("/data/zhangyang/results/SoftCL", time)
+    os.makedirs(log_dir, exist_ok=True)
+    joblib.dump(dict_log, os.path.join(log_dir, f"{model_filename}_log.p"))
+    
 
 if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
-    world_size = 6
     epochs = 15000
     batch_size = 128
-    mp.spawn(main, args=(world_size, epochs, batch_size), nprocs=world_size)
+    main(epochs, batch_size)

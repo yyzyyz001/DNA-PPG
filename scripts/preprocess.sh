@@ -1,2 +1,2 @@
-cd ..
-python utils/saveVital.py 
+python preProcessVital.py
+python preProcessMesa.py

@@ -21,9 +21,9 @@ from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 from time import time
 
-def full_regression(dataset_name, model_name, label, func, linear_model, content, concat, level="patient", string_convert=True, percent=None):
 
-    if concat:
+def full_regression(dataset_name, model_name, label, func, linear_model, content, concat, level="patient", string_convert=True, percent=None, seed=42):
+    if concat:  ### 合并train和val，通过四折来选择合适的参数
         X_train, y_train, X_test, y_test, _, _, test_keys = load_linear_probe_dataset_objs(dataset_name=dataset_name,
                                                                          model_name=model_name,
                                                                          label=label,
@@ -31,7 +31,7 @@ def full_regression(dataset_name, model_name, label, func, linear_model, content
                                                                          level=level,
                                                                          string_convert=string_convert,
                                                                          content=content)   
-    else:
+    else:  ### 分三个集合用val来选择合适的参数
         X_train, y_train, X_val, y_val, X_test, y_test, _, _, test_keys = load_linear_probe_dataset_objs(dataset_name=dataset_name,
                                                              model_name=model_name,
                                                              label=label,
@@ -40,9 +40,7 @@ def full_regression(dataset_name, model_name, label, func, linear_model, content
                                                              concat=False,
                                                              string_convert=string_convert,
                                                              content=content)
-        X_test = np.concatenate((X_test, X_val))
-        y_test = np.concatenate((y_test, y_val))
-    
+
     if percent is not None:
         size = len(X_train)
         idx = np.random.choice(np.arange(size), size=int(percent * size))
@@ -67,12 +65,24 @@ def full_regression(dataset_name, model_name, label, func, linear_model, content
             'min_samples_leaf': [1, 2],      
         }
 
-    results = regression_model(estimator=estimator,
-                    param_grid=param_grid,
-                    X_train=X_train,
-                    y_train=y_train,
-                    X_test=X_test,
-                    y_test=y_test)
+    if concat == False:
+        results = regression_model(estimator=estimator,
+                        param_grid=param_grid,
+                        X_train=X_train,
+                        y_train=y_train,
+                        X_val=X_val,
+                        y_val=y_val,
+                        X_test=X_test,
+                        y_test=y_test,
+                        concat=concat)
+    else:  
+        results = regression_model(estimator=estimator,
+                        param_grid=param_grid,
+                        X_train=X_train,
+                        y_train=y_train,
+                        X_test=X_test,
+                        y_test=y_test,
+                        concat=concat)
     
     results['model'] = model_name
     results['dataset'] = dataset_name
@@ -80,47 +90,89 @@ def full_regression(dataset_name, model_name, label, func, linear_model, content
         
     return results
 
-def get_results(model, config):
+def print_config_metrics(model_name, label_display, results, concat):
+    metrics = [("mae", "MAE"), ("r2", "R2")]
+
+    if not concat:
+        for split_name, split_display in [("val", "VAL"), ("test", "TEST")]:
+            for metric_key, metric_display in metrics:
+                # e.g. 'val_mae' / 'test_r2'
+                value_key = f"{split_name}_{metric_key}"
+                lb_key    = f"{split_name}_lower_bound_{metric_key}"
+                ub_key    = f"{split_name}_upper_bound_{metric_key}"
+
+                value = results[value_key]
+                lower = results[lb_key]
+                upper = results[ub_key]
+
+                print(
+                    f"{model_name} | {label_display} | {split_display}: "
+                    f"{metric_display} {value:.4f} | 95% CI [{lower:.4f}, {upper:.4f}]"
+                )
+    else:
+        split_display = "TEST"
+        for metric_key, metric_display in metrics:
+            value_key = metric_key
+            lb_key    = f"lower_bound_{metric_key}"
+            ub_key    = f"upper_bound_{metric_key}"
+
+            value = results[value_key]
+            lower = results[lb_key]
+            upper = results[ub_key]
+
+            print(
+                f"{model_name} | {label_display} | {split_display}: "
+                f"{metric_display} {value:.4f} | 95% CI [{lower:.4f}, {upper:.4f}]"
+            )
+
+
+def get_results(args, config):
     all_results = []
     func = get_data_for_ml
+
     for key in config.keys():
         configuration = config[key]
         print(f"{configuration['dataset']} | {configuration['label']}")
         print("######################")
 
         results = full_regression(dataset_name=configuration['dataset'],
-                                       model_name=model,
+                                       model_name=args.model,
                                        label=configuration['label'],
                                        func=func,
                                        linear_model=configuration['linear_model'],
                                        content=configuration['content'],
                                        level=configuration['level'],
                                        string_convert=configuration['string_convert'],
-                                       concat=configuration['concat'],
-                                       percent=configuration['percent'])
+                                       concat=args.concat,
+                                       percent=configuration['percent'],
+                                       seed=args.seed)
+        
+        print_config_metrics(model_name=args.model, label_display=configuration['label'], results=results, concat=args.concat)
         all_results.append(results)
         
-    return all_results
+    return all_results  ### config有几项这里就有几项
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('model', type=str, help="model directory")
+    parser.add_argument('--model', type=str, help="model directory")
+    parser.add_argument('--concat', type=bool, default=False)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     percent = None
     
     config = {
-              0: {"dataset": "mesa", "label": "nsrr_ahi_hp3r_aasm15", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-              1: {"dataset": "mesa", "label": "nsrr_ahi_hp4u_aasm15", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-              2: {"dataset": "ppg-bp", "label": "sysbp", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-              3: {"dataset": "ppg-bp", "label": "diasbp", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-              4: {"dataset": "ppg-bp", "label": "hr", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-              5: {"dataset": "dalia", "label": "hr", "linear_model": "ridge", "level": "segment", "content": "_segment", "string_convert": False, 'concat': False, 'percent': percent},
-              6: {"dataset": "numom2b", "label": "ga_at_stdydt", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-              7: {"dataset": "vv", "label": "bp_sys", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
-              8: {"dataset": "vv", "label": "bp_dia", "linear_model": "ridge", "level": "patient", "content": "_patient", "string_convert": False, 'concat': False, 'percent': percent},
+            #   0: {"dataset": "mesa", "label": "nsrr_ahi_hp3r_aasm15", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            #   1: {"dataset": "mesa", "label": "nsrr_ahi_hp4u_aasm15", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            #   2: {"dataset": "ppg-bp", "label": "sysbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            #   3: {"dataset": "ppg-bp", "label": "diasbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            #   4: {"dataset": "ppg-bp", "label": "hr", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+            #   5: {"dataset": "dalia", "label": "hr", "linear_model": "ridge", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent},
+            #   6: {"dataset": "numom2b", "label": "ga_at_stdydt", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+              7: {"dataset": "vv", "label": "sysbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+              8: {"dataset": "vv", "label": "diasbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
               }
 
-    all_results = get_results(args.model, config)
+    all_results = get_results(args, config)
     df = pd.DataFrame(all_results)
-    df.to_csv(f"../../results/{args.model}_regression_{str(percent)}_{str(int(time()))}.csv", index=False)
+    df.to_csv(f"../../results/{args.model}_regression_{str(int(time()))}.csv", index=False)
