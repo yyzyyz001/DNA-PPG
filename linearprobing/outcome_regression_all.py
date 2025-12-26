@@ -22,7 +22,7 @@ from sklearn.ensemble import RandomForestRegressor
 from time import time
 
 
-def full_regression(dataset_name, model_name, label, func, linear_model, content, concat, level="patient", string_convert=True, percent=None, seed=42):
+def full_regression(dataset_name, model_name, label, func, linear_model, content, concat, level="patient", string_convert=True, percent=None):
     if concat:  ### 合并train和val，通过四折来选择合适的参数
         X_train, y_train, X_test, y_test, _, _, test_keys = load_linear_probe_dataset_objs(dataset_name=dataset_name,
                                                                          model_name=model_name,
@@ -52,7 +52,8 @@ def full_regression(dataset_name, model_name, label, func, linear_model, content
         estimator = Ridge()
         param_grid = {
             'alpha': [0.1, 1.0, 10.0, 100.0],  # Regularization strength
-            'solver': ['auto', 'cholesky', 'sparse_cg']  # Solver to use in the computational routines
+            # 'solver': ['auto', 'cholesky', 'sparse_cg'],  # Solver to use in the computational routines
+            'solver': ['auto'],  # Solver to use in the computational routines
         }
 
     if linear_model == "rf":
@@ -144,8 +145,7 @@ def get_results(args, config):
                                        level=configuration['level'],
                                        string_convert=configuration['string_convert'],
                                        concat=args.concat,
-                                       percent=configuration['percent'],
-                                       seed=args.seed)
+                                       percent=configuration['percent'])
         
         print_config_metrics(model_name=args.model, label_display=configuration['label'], results=results, concat=args.concat)
         all_results.append(results)
@@ -156,18 +156,17 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str, help="model directory")
-    parser.add_argument('--concat', type=bool, default=False)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument('--concat', type=bool, default=True)
     args = parser.parse_args()
     percent = None
     
     config = {
             #   0: {"dataset": "mesa", "label": "nsrr_ahi_hp3r_aasm15", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
             #   1: {"dataset": "mesa", "label": "nsrr_ahi_hp4u_aasm15", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
-            #   2: {"dataset": "ppg-bp", "label": "sysbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
-            #   3: {"dataset": "ppg-bp", "label": "diasbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
-            #   4: {"dataset": "ppg-bp", "label": "hr", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
-            #   5: {"dataset": "dalia", "label": "hr", "linear_model": "ridge", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent},
+              2: {"dataset": "ppg-bp", "label": "sysbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+              3: {"dataset": "ppg-bp", "label": "diasbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+              4: {"dataset": "ppg-bp", "label": "hr", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
+              5: {"dataset": "dalia", "label": "hr", "linear_model": "ridge", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent},
             #   6: {"dataset": "numom2b", "label": "ga_at_stdydt", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
               7: {"dataset": "vv", "label": "sysbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
               8: {"dataset": "vv", "label": "diasbp", "linear_model": "ridge", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},

@@ -3,7 +3,7 @@ from tqdm import tqdm
 import sys
 import pandas as pd
 import wandb
-sys.path.append("../../../papagei-foundation-model/")
+sys.path.append("../../../SoftCL/")
 sys.path.append("../../")
 from tfc_utils import NTXentLoss_poly
 from Mydataset import PPGSegmentDataset, build_index_csv
@@ -26,11 +26,7 @@ def _get_base_model(model):
     return base
 
 def save_model(model, directory, filename, content, step=None, prefix=None):
-    # prefix is used to adjust the path relative to the script location
-    # Assuming we want to save to ../../../data/results/SoftCL/ (relative to script)
-    # which matches ../data/results/SoftCL/ relative to SoftCL root
-    
-    root = os.path.join("/data/zhangyang/results/SoftCL", directory)
+    root = os.path.join("../../../data/results/baselines/all", directory)
     os.makedirs(root, exist_ok=True)
 
     # 取“未包装”的原始模块，导出干净权重并保存到 CPU
@@ -44,62 +40,6 @@ def save_model(model, directory, filename, content, step=None, prefix=None):
     out_path = os.path.join(root, f"{filename}_{content}.pt")
     torch.save(save_dict, out_path)
     print(f"Model saved to {out_path}")
-
-def train_step_save(epoch, model, dataloader, batch_size, optimizer, device):
-
-    """
-    One training epoch for a SimCLR model
-
-    Args:
-        model (torch.nn.Module): Model to train
-        dataloader (torch.utils.data.Dataloader): A training dataloader with signals
-        criterion (torch.nn.<Loss>): Loss function to optimizer
-        optimizer (torch.optim): Optimizer to modify weights
-        device (string): training device; use GPU
-
-    Returns:
-        train_loss (float): The training loss for the epoch
-    """
-    global loss, loss_t, loss_f, l_TF, loss_c
-
-    model.to(device)
-    model.train()
-
-    batch = next(iter(dataloader))
-    data = batch["ssl_signal"].float().to(device)
-    aug1 = batch["sup_signal"].float().to(device)
-    
-    # Check input shape
-    if data.shape[-1] != 1250:
-        raise ValueError(f"Input data shape mismatch: expected 1250, got {data.shape[-1]}")
-
-    data_f = torch.fft.fft(data, dim=-1).abs()
-    aug1_f = torch.fft.fft(aug1, dim=-1).abs()
-
-    """Produce embeddings"""
-    h_t, z_t, h_f, z_f = model(data, data_f)
-    h_t_aug, z_t_aug, h_f_aug, z_f_aug = model(aug1, aug1_f)
-
-    """Compute Pre-train loss"""
-    """NTXentLoss: normalized temperature-scaled cross entropy loss. From SimCLR"""
-    nt_xent_criterion = NTXentLoss_poly(device, batch_size, 0.2, True)
-
-    loss_t = nt_xent_criterion(h_t, h_t_aug)
-    loss_f = nt_xent_criterion(h_f, h_f_aug)
-    l_TF = nt_xent_criterion(z_t, z_f) # this is the initial version of TF loss
-
-
-    l_1, l_2, l_3 = nt_xent_criterion(z_t, z_f_aug), nt_xent_criterion(z_t_aug, z_f), nt_xent_criterion(z_t_aug, z_f_aug)
-    loss_c = (1 + l_TF - l_1) + (1 + l_TF - l_2) + (1 + l_TF - l_3)
-
-    lam = 0.2
-    loss = lam*(loss_t + loss_f) + l_TF
-
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-    return loss.item()
 
 def train_step(epoch, model, dataloader, batch_size, optimizer, device):
 
@@ -140,32 +80,25 @@ def train_step(epoch, model, dataloader, batch_size, optimizer, device):
     """NTXentLoss: normalized temperature-scaled cross entropy loss. From SimCLR"""
     nt_xent_criterion = NTXentLoss_poly(device, batch_size, 0.2, True)
 
-    loss_t = nt_xent_criterion(h_t, h_t_aug)
+    loss_t = nt_xent_criterion(h_t, h_t_aug) 
     loss_f = nt_xent_criterion(h_f, h_f_aug)
-    
-    def dist(u, v):
-        return 1 - torch.nn.functional.cosine_similarity(u, v, dim=-1)
+    l_TF = nt_xent_criterion(z_t, z_f) # this is the initial version of TF loss
 
-    d_TF = dist(z_t, z_f)          # 原始时频距离 (Anchor - Positive)
-    d_TF_aug = dist(z_t, z_f_aug)  # 时域原样本 - 频域增强 (Anchor - Negative 1)
-    d_T_aug_F = dist(z_t_aug, z_f) # 时域增强 - 频域原样本 (Anchor - Negative 2)
 
-    # Triplet Margin Loss: max(d_pos - d_neg + margin, 0)
-    delta = 1.0 # margin
-    loss_c_1 = torch.clamp(d_TF - d_TF_aug + delta, min=0).mean()
-    loss_c_2 = torch.clamp(d_TF - d_T_aug_F + delta, min=0).mean()
+    l_1, l_2, l_3 = nt_xent_criterion(z_t, z_f_aug), nt_xent_criterion(z_t_aug, z_f), nt_xent_criterion(z_t_aug, z_f_aug)
+    loss_c = (1 + l_TF - l_1) + (1 + l_TF - l_2) + (1 + l_TF - l_3)
 
-    loss_c = loss_c_1 + loss_c_2
-
-    # 3. 组合最终 Loss
-    lam = 0.5 # 论文常用参数
-    loss = lam * (loss_t + loss_f) + (1 - lam) * loss_c
+    # lam = 0.5
+    # loss = lam * (loss_t + loss_f) + (1 - lam) * loss_c
+    lam = 0.2 
+    loss = lam*(loss_t + loss_f) + l_TF
 
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
 
     return loss.item()
+
 
 def training(model, epochs, train_dataloader, batch_size, optimizer, device, directory, filename, wandb=None):
 
@@ -222,16 +155,15 @@ def training(model, epochs, train_dataloader, batch_size, optimizer, device, dir
     return dict_log
 
 def main(epochs, batch_size, device_id=0):
-    
     shuffle = True
     lr = 0.0001
     
     print("Loading datasets...")
     data_roots = {
-        "vitaldb": "/data/zhangyang/physionet.org/files/vitaldb/1.0.0/numericPPG",
-        "mesa": "/data/zhangyang/numericPPG"
+        "vitaldb": "../../../data/pretrain/vitaldb/numericPPG",
+        "mesa": "../../../data/pretrain/mesa/numericPPG"
     }
-    index_csv = "/data/zhangyang/physionet.org/files/vitaldb/1.0.0/index/numericPPG_index_tfc_all.csv"
+    index_csv = "../../../data/index/mesaVital_TFCBYOL_index.csv"
     
     build_index_csv(data_roots, index_csv, overwrite=False)
 
@@ -248,7 +180,7 @@ def main(epochs, batch_size, device_id=0):
 
     dataset = PPGSegmentDataset(
         index_csv=index_csv,
-        source_sel="all",
+        source_sel="vitaldb",
         normalize=True,
         verify=True,
         ssl_tf=transform,
@@ -276,7 +208,7 @@ def main(epochs, batch_size, device_id=0):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 
      ### Experiment Tracking ###
-    experiment_name = "resnet"
+    experiment_name = ""
     name = "tfc"
     group_name = "PPG"
 
@@ -293,7 +225,7 @@ def main(epochs, batch_size, device_id=0):
     # wandb = None
     # run_id = "afgh"
     time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    model_filename = f'{experiment_name}_{name}_{run_id}_{time}'
+    model_filename = f'{name}_{run_id}_{time}'
 
     dict_log = training(model=model, 
                    train_dataloader=train_dataloader,
@@ -306,13 +238,14 @@ def main(epochs, batch_size, device_id=0):
                    wandb=wandb)
     wandb.finish()
     
-    log_dir = os.path.join("/data/zhangyang/results/SoftCL", time)
+    log_dir = os.path.join("../../../data/results/baselines/all", time)
     os.makedirs(log_dir, exist_ok=True)
     joblib.dump(dict_log, os.path.join(log_dir, f"{model_filename}_log.p"))
     
 
 if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
-    epochs = 15000
+    epochs = 50000
     batch_size = 128
-    main(epochs, batch_size)
+    device_id = 2
+    main(epochs, batch_size, device_id)

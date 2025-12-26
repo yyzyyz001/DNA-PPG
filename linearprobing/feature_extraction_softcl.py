@@ -20,7 +20,6 @@ from models.transformer import TransformerSimple
 from augmentations import ResampleSignal
 from .extracted_feature_combine import segment_avg_to_dict
 from torch_ecg._preprocessors import Normalize
-from models.resnet import ResNet1D, ResNet1DMoE
 from models.vit1d import Vit1DEncoder
 from models.efficientnet import EfficientNetB0
 import shutil
@@ -41,7 +40,8 @@ def compute_signal_embeddings_df(model, path, case, segments, batch_size, device
             batch_signal = torch.Tensor(batch_signal).unsqueeze(dim=1).to(device)
             
             if architecture == "resnet1d":
-                _, outputs = model(batch_signal)
+                # _, outputs = model(batch_signal)
+                outputs, _ = model(batch_signal)
                 embeddings.append(outputs.cpu().detach().numpy())
             elif architecture == "vit1d":
                 outputs = model(batch_signal, "cls")
@@ -54,7 +54,7 @@ def compute_signal_embeddings_df(model, path, case, segments, batch_size, device
 
     return embeddings
 
-def save_embeddings_df(path, df, case_name, child_dirs, save_dir, model, batch_size, device, resample=False, normalize=True, fs=None, fs_target=None, is_mt_regress=False, architecture='vit1d'):
+def save_embeddings_df(path, child_dirs, save_dir, model, batch_size, device, resample=False, normalize=True, fs=None, fs_target=None, is_mt_regress=False, architecture='vit1d'):
     dict_embeddings = {}
 
     if os.path.exists(save_dir):
@@ -140,7 +140,6 @@ if __name__ == "__main__":
     # model = torch.compile(model, mode="reduce-overhead")    
     model.to(device)
 
-    # if args.dataset in ["vital", "mimic", "mesa", "wesad", "dalia"]:
     if args.dataset in ["vital", "mimic", "mesa"]:
         df_train, df_val, df_test, case_name, ppg_dir = get_data_info(args.dataset, prefix="", usecolumns=['segments'])
     else:
@@ -160,8 +159,6 @@ if __name__ == "__main__":
     content = CONTENT_MAP[args.dataset] if args.dataset in CONTENT_MAP else "patient"
 
     save_embeddings_df(path=ppg_dir,
-            df=df,
-            case_name=case_name,
             child_dirs=child_dirs,
             save_dir=save_dir,
             model=model,

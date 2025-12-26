@@ -278,17 +278,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # 1. 处理 EDF 文件
-    # edf_files = [f for f in os.listdir(args.edf_dir) if f.lower().endswith(".edf")]
-    # for f in tqdm(edf_files, desc="Processing EDFs"):
-    #     edf_path = os.path.join(args.edf_dir, f)
-    #     save_raw_tracks_mesa(
-    #         edf_path, 
-    #         args.output_dir, 
-    #         args.pleth_name, 
-    #         args.spo2_name, 
-    #         args.hr_name, 
-    #         signal_time=args.signal_time
-    #     )
+    edf_files = [f for f in os.listdir(args.edf_dir) if f.lower().endswith(".edf")]
+    for f in tqdm(edf_files, desc="Processing EDFs"):
+        edf_path = os.path.join(args.edf_dir, f)
+        save_raw_tracks_mesa(
+            edf_path, 
+            args.output_dir, 
+            args.pleth_name, 
+            args.spo2_name, 
+            args.hr_name, 
+            signal_time=args.signal_time
+        )
 
     # 2. 清洗直线信号
     print("[INFO] Running flatline detection cleanup...")

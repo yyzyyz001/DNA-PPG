@@ -202,16 +202,6 @@ def sanitize(arr):
     return np.array(parsed_list, dtype=float)
 
 def load_model(model, filepath):
-    """
-    Load a PyTorch model from a specified file path.
-
-    Args:
-    model (torch.nn.Module): The PyTorch model instance to load the state dictionary into.
-    filepath (str): The path from which the model will be loaded.
-
-    Returns:
-    model (torch.nn.Module): The model with the loaded state dictionary.
-    """
     model.load_state_dict(torch.load(filepath))
     model.eval()  # Set the model to evaluation mode
     print(f"Model loaded from {filepath}")

@@ -71,7 +71,7 @@ def save_model(model, directory, filename, content):
     out_path = os.path.join(root, f"{filename}_{content}.pt")
     torch.save({"model": sd}, out_path)
 
-def train_step(model, batch, optimizer, device, tfc_model=None, alpha=0.5, tau=0.2, sigma=1.0, sup_weight = 0.0, ssl_weight=1.0, mode="vit1d"):
+def train_step(model, batch, optimizer, device, tfc_model=None, alpha=0.5, tau_ssl = 0.1, tau_sup=0.2, sigma=1.0, sup_weight = 0.0, ssl_weight=1.0, mode="vit1d"):
     signal      = batch["signal"].to(device)        # [B,1,T]
     ssl_signal  = batch["ssl_signal"].to(device)    # [B,1,T]
     sup_signal  = batch["sup_signal"].to(device)    # [B,1,T]
@@ -93,8 +93,8 @@ def train_step(model, batch, optimizer, device, tfc_model=None, alpha=0.5, tau=0
     if tfc_model is not None:
         tfc_features = extract_tfc_features(tfc_model, signal)  ## 这里使用未增强的 signal 提取 TFC 特征
 
-    loss_ssl_val = loss_ssl(ssl_embeddings, subject_ids, tfc_features, alpha=alpha, positive_only=True)
-    loss_sup_val = loss_sup(sup_embeddings, numeric, tau=tau, sigma=sigma)
+    loss_ssl_val = loss_ssl(ssl_embeddings, subject_ids, tfc_features, tau=tau_ssl, alpha=alpha, positive_only=True)
+    loss_sup_val = loss_sup(sup_embeddings, numeric, tau=tau_sup, sigma=sigma)
     
     loss = ssl_weight * loss_ssl_val + sup_weight * loss_sup_val
 
@@ -156,7 +156,10 @@ def training(model, train_dataloader, optimizer, args, directory, filename, writ
                 optimizer=optimizer,
                 device=device,
                 tfc_model=tfc_model,
-                alpha=args.alpha, tau=args.tau, sigma=args.sigma,
+                alpha=args.alpha, 
+                tau_ssl=args.tau_ssl,
+                tau_sup=args.tau_sup,
+                sigma=args.sigma,
                 sup_weight=sup_weight_now, 
                 ssl_weight=ssl_weight_now,
                 mode=args.model
@@ -193,14 +196,9 @@ def training(model, train_dataloader, optimizer, args, directory, filename, writ
         # 保存最优与最后一次
         if epoch_loss < best_loss:
             best_loss = epoch_loss
-            print(f"Saving model to: {directory}")
-            content = f"epoch{epoch+1}_loss{epoch_loss:.4f}"
-            save_model(model, directory, filename, content)
-
-        if epoch == args.epochs - 1:
-            print(f"Saving model to: {directory}")
-            content = f"epoch{epoch+1}_loss{epoch_loss:.4f}"
-            save_model(model, directory, filename, content)
+        print(f"Saving model to: {directory}")
+        content = f"epoch{epoch+1}_loss{epoch_loss:.4f}"
+        save_model(model, directory, filename, content)
 
     if writer is not None:
         writer.close()
@@ -349,7 +347,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--dtw-temp", type=float, default=20.0)  
     parser.add_argument("--alpha", type=float, default=0.5)
-    parser.add_argument("--tau", type=float, default=0.2)
+    parser.add_argument("--tau_ssl", type=float, default=0.1)
+    parser.add_argument("--tau_sup", type=float, default=0.2)
     parser.add_argument("--sigma", type=float, default=1.0)
     parser.add_argument("--data-source", type=str, default="all", choices=["mesa", "vitaldb", "all"], help="Select dataset source: mesa, vitaldb, or all")  ### 数据源选择
     parser.add_argument("--indexCsv", type=str, default="../data/index/mesaVital_index.csv")
@@ -362,6 +361,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--use-tfc", action="store_true", help="Enable TFC guidance for soft negative sampling")
     parser.add_argument("--tfc-path", type=str, default="../data/results/baselines/vital/tfc_hlai0k7t_2025_12_14_12_28_48_best.pt")
+    # parser.add_argument("--tfc-path", type=str, default="../data/results/baselines/all/2025_12_25_16_29_57/tfc_pvn34i98_2025_12_25_16_29_57_step15000_loss3.0867.pt")
     
     args = parser.parse_args()
 

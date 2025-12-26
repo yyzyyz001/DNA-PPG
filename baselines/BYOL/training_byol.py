@@ -42,7 +42,7 @@ def save_model(model, directory, filename, content, step=None, prefix=None):
     # Assuming we want to save to ../../../data/results/SoftCL/ (relative to script)
     # which matches ../data/results/SoftCL/ relative to SoftCL root
     
-    root = os.path.join("/data/zhangyang/results/SoftCL", directory)
+    root = os.path.join("../../../data/results/baselines/all", directory)
     os.makedirs(root, exist_ok=True)
 
     # 取“未包装”的原始模块，导出干净权重并保存到 CPU
@@ -145,7 +145,7 @@ def training(model, epochs, train_dataloader, optimizer, device, directory, file
 
     return dict_log
 
-def main(epochs, batch_size, device_id=0):
+def main(epochs, batch_size, device_id=2):
     shuffle = True
     lr = 0.0001
     
@@ -169,10 +169,10 @@ def main(epochs, batch_size, device_id=0):
 
     print("Loading datasets...")
     data_roots = {
-        "vitaldb": "/data/zhangyang/physionet.org/files/vitaldb/1.0.0/numericPPG",
-        "mesa": "/data/zhangyang/numericPPG"
+        "vitaldb": "../../../data/pretrain/vitaldb/numericPPG",
+        "mesa": "../../../data/pretrain/mesa/numericPPG"
     }
-    index_csv = "/data/zhangyang/physionet.org/files/vitaldb/1.0.0/index/numericPPG_index_byol_all.csv"
+    index_csv = "../../../data/index/mesaVital_TFCBYOL_index.csv"
     
     build_index_csv(data_roots, index_csv, overwrite=False)
     
@@ -216,7 +216,7 @@ def main(epochs, batch_size, device_id=0):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 
     ### Experiment Tracking ###
-    experiment_name = "resnet"
+    experiment_name = ""
     name = "byol"
     group_name = "PPG"
 
@@ -233,7 +233,7 @@ def main(epochs, batch_size, device_id=0):
     # wandb = None
     # run_id = "mkhl43"
     time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    model_filename = f'{experiment_name}_{name}_{run_id}_{time}'
+    model_filename = f'{name}_{run_id}_{time}'
 
     dict_log = training(model=model, 
                    train_dataloader=train_dataloader,
@@ -245,7 +245,7 @@ def main(epochs, batch_size, device_id=0):
                    wandb=wandb)
     wandb.finish()
     
-    log_dir = os.path.join("/data/zhangyang/results/SoftCL", time)
+    log_dir = os.path.join("../../../data/results/baselines/all", time)
     os.makedirs(log_dir, exist_ok=True)
     joblib.dump(dict_log, os.path.join(log_dir, f"{model_filename}_log.p"))
     
@@ -254,7 +254,8 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     epochs = 15000
     batch_size = 128
-    main(epochs, batch_size)
+    device_id = 0
+    main(epochs, batch_size, device_id)
 
 
 

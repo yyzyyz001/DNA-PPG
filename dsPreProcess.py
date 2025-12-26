@@ -603,7 +603,7 @@ def build_parser():
     parser.add_argument("--segment_length", type=int, default=1250)
     parser.add_argument("--segments_per_subject", type=int, default=3)
     parser.add_argument("--subject_padding", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=911)
 
     return parser
 

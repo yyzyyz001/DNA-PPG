@@ -14,13 +14,16 @@ import torch.fft as fft
 sys.path.append("../models")
 sys.path.append("../")
 from utilities import get_data_info
-from utils import load_model_without_module_prefix, batch_load_signals, resample_batch_signal, none_or_int, str2bool
+from .utils import load_model_without_module_prefix, batch_load_signals, resample_batch_signal, none_or_int, str2bool
 from tqdm import tqdm
-from resnet import ResNet1D, ResNet1DMoE, TFCResNet
-from transformer import TransformerSimple
+from models.resnet import ResNet1D, ResNet1DMoE, TFCResNet
+from models.transformer import TransformerSimple
 from augmentations import ResampleSignal
 from torch_ecg._preprocessors import Normalize
+from .extracted_feature_combine import segment_avg_to_dict
 from baselines.BYOL.byol_architecture import BYOL
+import shutil
+
 
 def extract_byol_features(model, input_data, device):
     
@@ -61,22 +64,19 @@ def compute_signal_embeddings(model, path, case, segments, batch_size, device, r
 
     return embeddings
 
-def save_embeddings(path, df, child_dirs, save_dir, model, batch_size, device, is_directory, resample=False, normalize=True, fs=None, fs_target=None):
+def save_embeddings(path, child_dirs, save_dir, model, batch_size, device, resample=False, normalize=True, fs=None, fs_target=None):
     dict_embeddings = {}
 
-    if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
-        print(f"[INFO] Creating directory: {save_dir}")
-    else:
-        print(f"[INFO] {save_dir} already exists")
+    if os.path.exists(save_dir):
+        shutil.rmtree(save_dir)
+        print(f"[INFO] Deleted existing directory: {save_dir}")
+
+    os.mkdir(save_dir)
+    print(f"[INFO] Creating directory: {save_dir}")
 
     for i in tqdm(range(len(child_dirs))):
         case = str(child_dirs[i])
-        if is_directory:
-            segments = os.listdir(os.path.join(path, case))
-        else:
-            print("Extracting segments from df")
-            segments = df[df[case_name] == child_dirs[i]].segments.values
+        segments = os.listdir(os.path.join(path, case))
 
         embeddings = compute_signal_embeddings(model=model,
                                             path=path,
@@ -93,12 +93,20 @@ def save_embeddings(path, df, child_dirs, save_dir, model, batch_size, device, i
         print(f"[INFO] Saving file {case} to {save_dir}")
         joblib.dump(embeddings, os.path.join(save_dir, case + ".p"))
 
+def load_model(model, weights_path, device):
+    checkpoint = torch.load(weights_path, map_location="cpu")
+    state_dict = checkpoint.get("model", checkpoint)
+    model.load_state_dict(state_dict, strict=False)
+    return model.to(device)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('model_path', type=str, help="Path to the model")
     parser.add_argument('device', type=str, help="CUDA device for model")
     parser.add_argument('dataset', type=str, help="Dataset to extract")
     parser.add_argument('split', type=str, help="Data split to process")
+    parser.add_argument('save_dir', type=str, help="Path to the save directory")
     parser.add_argument('start_idx', type=none_or_int, default=None)
     parser.add_argument('end_idx', type=none_or_int, default=None)
     parser.add_argument('resample', type=str2bool, default=None)
@@ -126,39 +134,40 @@ if __name__ == "__main__":
                 n_block=model_config['n_block'],
                 n_classes=model_config['n_classes'])
 
-    model = BYOL(image_size=1250,
-            net=net)
-    model = load_model_without_module_prefix(model, "../../models/2024_09_16_14_19_52/resnet_byol_mkhl43_2024_09_16_14_19_52_step10000_loss1.2126.pt")
+    model = BYOL(image_size=1250, net=net)
     device = f"cuda:{args.device}"
-    model.to(device)
+    model = load_model(model, args.model_path, device=device)
 
-    if args.dataset in ["vital", "mimic", "mesa", "wesad", "dalia"]:
-        df_train, df_val, df_test, case_name, ppg_dir = get_data_info(args.dataset, prefix="../", usecolumns=['segments'])
+    if args.dataset in ["vital", "mimic", "mesa"]:
+        df_train, df_val, df_test, case_name, ppg_dir = get_data_info(args.dataset, prefix="", usecolumns=['segments'])
     else:
-        df_train, df_val, df_test, case_name, ppg_dir = get_data_info(args.dataset, prefix="../")
+        df_train, df_val, df_test, case_name, ppg_dir = get_data_info(args.dataset, prefix="")
 
     dict_df = {'train': df_train, 'val': df_val, 'test': df_test}
     df = dict_df[args.split]
     child_dirs = np.unique(df[case_name].values)[args.start_idx:args.end_idx]
+    CONTENT_MAP = {"ppg-bp": "patient", "dalia": "subject", "wesad": "subject", "vv":"patient", "sdb": "patient", "ecsmp": "patient"}
+    content = CONTENT_MAP[args.dataset] if args.dataset in CONTENT_MAP else "patient"
 
-    save_dir = f"../../data/{args.dataset}/features/byol"
-    if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
-    save_dir = f"{save_dir}/{args.split}/"
-
-    is_directory=True
-    if args.dataset in ["vital", "mimic", "mesa", "wesad", "dalia", "marsh"]:
-        is_directory=False
+    byol_dir = f"{args.save_dir}/byol"
+    if not os.path.exists(byol_dir):
+        os.mkdir(byol_dir)
+    save_dir = f"{byol_dir}/{args.split}/"
 
     save_embeddings(path=ppg_dir,
-               df=df,
                child_dirs=child_dirs,
                save_dir=save_dir,
                model=model,
                batch_size=batch_size,
                device=device,
-               is_directory=is_directory,
                resample=args.resample,
                normalize=args.normalize,
                fs=args.fs,
                fs_target=args.fs_target)
+
+    dict_feat = segment_avg_to_dict(save_dir, content)
+
+    save_path = os.path.join(byol_dir, f"dict_{args.split}_{content}.p")
+    if os.path.exists(save_path):
+        os.remove(save_path)
+    joblib.dump(dict_feat, save_path)

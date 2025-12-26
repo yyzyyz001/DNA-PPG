@@ -1,0 +1,111 @@
+_wandb:
+    value:
+        cli_version: 0.21.0
+        e:
+            656gss94ag58dia81mjblphxe73jre3u:
+                codePath: baselines/training_vanilla_simclr.py
+                codePathLocal: training_vanilla_simclr.py
+                cpu_count: 80
+                cpu_count_logical: 160
+                cudaVersion: "12.2"
+                disk:
+                    /:
+                        total: "466850480128"
+                        used: "36053118976"
+                email: 1900012201@pku.edu.cn
+                executable: /home/yangyizhang1/anaconda3/envs/found/bin/python
+                git:
+                    commit: d5ead9dd3cc2f6fbdbdcf55a22bdf0de51538c87
+                gpu: NVIDIA A800-SXM4-80GB
+                gpu_count: 8
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-97d6daba-f418-2435-525f-970e87589b1e
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-2d43f3f4-809c-42dd-abc2-f5feadefec51
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-5313595a-a69b-9bc9-a466-adec05cf045d
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-8d1e4eaa-a812-1ca9-58e7-454665e8868c
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-35c3bdf3-4e15-edcb-e7a3-27c3b0ce25cc
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-993cc7b5-0a41-f62f-ff3f-aa9afe5beee8
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-9f30965d-c530-9de1-a353-f24f6105ef3b
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A800-SXM4-80GB
+                      uuid: GPU-a4a0e899-1678-4894-4a80-bd17a514a2c7
+                host: tj5-a800-miwear02.kscn
+                memory:
+                    total: "1081812725760"
+                os: Linux-5.15.122-x86_64-with-glibc2.35
+                program: /home/yangyizhang1/foundation/SoftCL/baselines/training_vanilla_simclr.py
+                python: CPython 3.10.0
+                root: /home/yangyizhang1/foundation/SoftCL/baselines
+                startedAt: "2025-12-22T11:57:58.013585Z"
+                writerId: 656gss94ag58dia81mjblphxe73jre3u
+        m: []
+        python_version: 3.10.0
+        t:
+            "1":
+                - 1
+                - 5
+                - 41
+                - 53
+                - 105
+            "2":
+                - 1
+                - 5
+                - 41
+                - 53
+                - 105
+            "3":
+                - 2
+                - 13
+                - 16
+            "4": 3.10.0
+            "5": 0.21.0
+            "12": 0.21.0
+            "13": linux-x86_64
+base_filters:
+    value: 32
+batch_size:
+    value: 128
+epochs:
+    value: 15000
+groups:
+    value: 1
+kernel_size:
+    value: 3
+learning_rate:
+    value: 0.0001
+n_block:
+    value: 18
+n_classes:
+    value: 512
+stride:
+    value: 2

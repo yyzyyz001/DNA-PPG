@@ -229,7 +229,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str, help="model directory")
     parser.add_argument('--classification_type', type=str, default="binary")
-    parser.add_argument('--concat', type=bool, default=False)
+    parser.add_argument('--concat', type=bool, default=True)
     args = parser.parse_args()
     percent = None
 
@@ -240,9 +240,9 @@ if __name__ == "__main__":
             # 2: {"dataset": "mesa", "label": "nsrr_ever_smoker", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
             # 3: {"dataset": "mimic", "label": "DOD", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
             # 4: {"dataset": "ppg-bp", "label": "Hypertension", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
-            # 5: {"dataset": "wesad", "label": "valence", "classification_type": "binary", "linear_model": "lr", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent}, 
-            # 6: {"dataset": "wesad", "label": "arousal", "classification_type": "binary", "linear_model": "lr", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent}, 
-            # 7: {"dataset": "ecsmp", "label": "TMD", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent}, 
+            5: {"dataset": "wesad", "label": "valence_binary", "classification_type": "binary", "linear_model": "lr", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent}, 
+            6: {"dataset": "wesad", "label": "arousal_binary", "classification_type": "binary", "linear_model": "lr", "level": "subject", "content": "subject", "string_convert": False, 'percent': percent}, 
+            7: {"dataset": "ecsmp", "label": "TMD", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent}, 
             # 8: {"dataset": "ecsmp", "label": "sds", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent}, 
             # 9: {"dataset": "numom2b", "label": "stdyvis", "classification_type": "binary", "linear_model": "lr", "level": "patient", "content": "patient", "string_convert": False, 'percent': percent},
             }

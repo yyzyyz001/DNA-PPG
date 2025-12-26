@@ -228,7 +228,7 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
     
     if dataset_name == "vv":
-        seed = 42
+        seed = 32
         case_name = "subject_ID"
         path = f"{prefix}../data/downstream/vv/datafile/ppg"
         if usecolumns is not None:
