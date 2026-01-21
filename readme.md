@@ -102,7 +102,7 @@ The core logic and pre-trained resources are organized as follows:
 - **`ckpt/dna_ppg.pt`**:
    The **official pre-trained checkpoint** of DNA-PPG.
   - It contains the weights of the **ResNet-1D** encoder (approx. 4.99M parameters).
-  - Trained on the full dataset (VitalDB + MESA, 10.7M segments) using the optimal joint strategy ($α=0.7$) as reported in the paper.
+  - Trained on the full dataset (VitalDB + MESA, 10.7M segments) using the optimal joint strategy (α=0.7) as reported in the paper.
   - This file should be used to initialize the backbone for all downstream evaluations.
 - **`models/`**:
    Contains the definition of the ResNet-1D backbone.
