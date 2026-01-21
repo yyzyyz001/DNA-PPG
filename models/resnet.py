@@ -1,15 +1,3 @@
-# © 2024 Nokia
-# Licensed under the BSD 3 Clause Clear License
-# SPDX-License-Identifier: BSD-3-Clause-Clear
-
-"""
-Architecture adapted from the following:
-
-resnet for 1-d signal data, pytorch version
- 
-Shenda Hong, Oct 2019
-"""
-
 import numpy as np
 from collections import Counter
 from tqdm import tqdm

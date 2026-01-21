@@ -1,7 +1,3 @@
-# © 2024 Nokia
-# Licensed under the BSD 3 Clause Clear License
-# SPDX-License-Identifier: BSD-3-Clause-Clear
-
 import torch
 import torch.fft
 import joblib
@@ -100,6 +96,19 @@ def load_and_generate_longer_signal(directory, no_of_segments):
 
     return np.hstack(signal)
 
+CONTENT_MAP = {
+    "ppg-bp": "patient",
+    "dalia": "subject",
+    "vv": "patient",
+    "wesad": "subject",
+    "sdb": "patient",
+    "ecsmp": "subject"
+}
+
+def get_content_type(dataset_name):
+    return CONTENT_MAP.get(dataset_name, "patient")
+
+
 def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
     """
     This function returns meta data about the dataset such as user/ppg dataframes,
@@ -117,7 +126,6 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         case_name (string): column name containing user id
         path (string): path to ppg directory
     """
-
     if dataset_name == "mesa":
         case_name = "mesaid"
         path = f"{prefix}../data/mesa/mesappg/"
@@ -163,14 +171,12 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         df_test = pd.read_csv(f"{prefix}../data/mimic/test_clean.csv", usecols=usecols)
     
     if dataset_name == "ppg-bp":
-        seed = 32
         case_name = "subject_ID"
         path = f"{prefix}../data/downstream/ppg-bp/datafile/ppg"
         if usecolumns is not None:
             usecols = np.concatenate([[case_name], usecolumns])
         else:
             usecols = None 
-
         df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
         df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
         df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
@@ -180,7 +186,6 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(4))
     
     if dataset_name == "ecsmp":
-        seed = 42
         case_name = "subject_ID"
         path = f"{prefix}../data/downstream/ecsmp/datafile/ppg"
         if usecolumns is not None:
@@ -197,7 +202,6 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(3))
     
     if dataset_name == "wesad":
-        seed = 32
         case_name = "subject_ID"
         path = f"{prefix}../data/downstream/wesad/datafile/ppg"
         if usecolumns is not None:
@@ -215,7 +219,6 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
 
     
     if dataset_name == "dalia":
-        seed = 42
         case_name = "subject_ID"
         path = f"{prefix}../data/downstream/dalia/datafile/ppg"
         if usecolumns is not None:
@@ -228,7 +231,6 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
     
     if dataset_name == "vv":
-        seed = 32
         case_name = "subject_ID"
         path = f"{prefix}../data/downstream/vv/datafile/ppg"
         if usecolumns is not None:
@@ -241,7 +243,6 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
 
     if dataset_name == "sdb":
-        seed = 32
         case_name = "subject_ID"
         path = f"{prefix}../data/downstream/sdb/datafile/ppg"  
         if usecolumns is not None:
@@ -252,10 +253,6 @@ def get_data_info(dataset_name, prefix="", usecolumns=None, seed=42):
         df_train = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/train_{seed}.csv", usecols=usecols)
         df_val = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/val_{seed}.csv", usecols=usecols)
         df_test = pd.read_csv(f"{prefix}../data/downstream/{dataset_name}/datafile/split/test_{seed}.csv", usecols=usecols)
-
-        # df_train.loc[:, case_name] = df_train[case_name].apply(lambda x:str(x).zfill(4))
-        # df_val.loc[:, case_name] = df_val[case_name].apply(lambda x:str(x).zfill(4))
-        # df_test.loc[:, case_name] = df_test[case_name].apply(lambda x:str(x).zfill(4))
 
     if dataset_name == "marsh":
         case_name = "subjects"
@@ -334,7 +331,6 @@ def load_tfc_model(model_path, device):
     else:
         state_dict = checkpoint
     
-    # 去除 DDP 可能产生的 'module.' 前缀
     new_state_dict = {}
     for k, v in state_dict.items():
         name = k.replace("module.", "") if k.startswith("module.") else k
@@ -342,32 +338,23 @@ def load_tfc_model(model_path, device):
         
     model.load_state_dict(new_state_dict, strict=False)
     model.to(device)
-    model.eval() # 冻结 BN 层
+    model.eval() 
     
-    # 彻底冻结梯度，节省显存
     for param in model.parameters():
         param.requires_grad = False
         
     return model
 
 def extract_tfc_features(model, signals):
-    """
-    TFC 特征提取辅助函数 (与 compute_signal_embeddings 对齐)
-    signals: [B, 1, T] - 预期已经过 Z-score 归一化
-    Returns: [B, D_tfc] (z_time 与 z_freq 的拼接, Tensor类型)
-    """
     if model is None:
         return None
         
     x_time = signals.float()
     
-    # 1. 频域提取 (保持一致: 全频谱 abs)
     x_freq = torch.fft.fft(x_time, dim=-1).abs()
     
     with torch.no_grad():
-        # 2. 前向传播
         h_t, z_t, h_f, z_f = model(x_time, x_freq)
-        # 3. 特征拼接 (修改点: 使用 z 而不是 h)
         emb = torch.cat((z_t, z_f), dim=1)
         
     return emb

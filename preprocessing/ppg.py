@@ -63,7 +63,6 @@ def save_pickle_ppg(dict_waveforms, f_name, frequency, signal_time, save_path):
 
     seg_len = int(signal_time * frequency)
     total_len = len(ppg)
-    # 如果末尾不够一段，就补零
     pad_len = (seg_len - total_len % seg_len) % seg_len
     for key in ['ppg']:
         dict_waveforms[key] = np.concatenate([dict_waveforms[key], np.zeros(pad_len)])
@@ -75,7 +74,6 @@ def save_pickle_ppg(dict_waveforms, f_name, frequency, signal_time, save_path):
     subject_dir = os.path.join(save_path, subject_id)
     os.makedirs(subject_dir, exist_ok=True)
 
-    # 按段保存到各自的子文件夹里
     for i in range(n_segs):
         sub_dict = {}
         start = i * seg_len
@@ -206,7 +204,6 @@ def normalize_and_save(src_pkl_path, dest_norm_path, fs, keys=("ppg", "ppg_d1", 
     norm = Normalize(method='z-score')
 
     cnt = 0
-    # 遍历所有 subject 目录
     for subject_id in os.listdir(src_pkl_path):
         src_subject_dir = os.path.join(src_pkl_path, subject_id)
         if not os.path.isdir(src_subject_dir):
@@ -215,11 +212,9 @@ def normalize_and_save(src_pkl_path, dest_norm_path, fs, keys=("ppg", "ppg_d1", 
         cnt = cnt+1
         print(cnt, ":", subject_id)
         
-        # 创建目标 subject 目录
         dest_subject_dir = os.path.join(dest_norm_path, subject_id)
         os.makedirs(dest_subject_dir, exist_ok=True)
 
-        # 遍历分段文件
         for fname in os.listdir(src_subject_dir):
             if not fname.endswith('.p'):
                 continue

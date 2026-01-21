@@ -16,33 +16,79 @@ from wesad_info import wesad_all_info
 from ecsmp_info import tmd_data, e4_ids
 import glob
 import json
+from utilities import SEED_MAP
+import numpy as np
+from scipy.signal import butter, filtfilt, find_peaks
 
+def reject_flat_or_saturated(x, eps_std=1e-4, max_same_ratio=0.95):
+    x = np.asarray(x)
+    if x.size == 0:
+        return True
+    if np.std(x) < eps_std:
+        return True
+    same_ratio = np.mean(np.isclose(x, x[0]))
+    if same_ratio > max_same_ratio:
+        return True
+    return False
 
-def split_by_subject_and_save(df, args, split_dir):
+def reject_extreme_amplitude(x, max_robust_range=20.0):
+    x = np.asarray(x)
+    if x.size == 0:
+        return True
+    p1, p99 = np.percentile(x, [1, 99])
+    q25, q75 = np.percentile(x, [25, 75])
+    iqr = q75 - q25
+    if iqr < 1e-6:
+        return True
+    robust_range = (p99 - p1) / iqr
+    return robust_range > max_robust_range
+
+def _bandpass(x, fs, lo=0.5, hi=8.0, order=3):
+    b, a = butter(order, [lo/(fs/2), hi/(fs/2)], btype="band")
+    return filtfilt(b, a, x)
+
+def reject_bad_hr_by_peaks(x, fs, min_bpm=40, max_bpm=180):
+    x = np.asarray(x)
+    if x.size == 0:
+        return True
+    y = _bandpass(x, fs)
+    peaks, _ = find_peaks(y, distance=int(0.3 * fs))
+    bpm = len(peaks) * 6.0  # 10s -> *6
+    return (bpm < min_bpm) or (bpm > max_bpm)
+
+def split_by_subject_and_save(df, args, split_dir, seed, ifSave=True):
     subject_ids = df[args.case_name].unique()
     train_ids, temp_ids = train_test_split(
-        subject_ids, test_size=0.4, random_state=args.seed
+        subject_ids, test_size=0.4, random_state=seed
     )
     val_ids, test_ids = train_test_split(
-        temp_ids, test_size=0.5, random_state=args.seed
+        temp_ids, test_size=0.5, random_state=seed
     )
 
     def save_subset(name, ids):
         df[df[args.case_name].isin(ids)].to_csv(
-            os.path.join(split_dir, f"{name}_{args.seed}.csv"), index=False
+            os.path.join(split_dir, f"{name}_{seed}.csv"), index=False
         )
+    if ifSave:
+        save_subset("train", train_ids)
+        save_subset("val", val_ids)
+        save_subset("test", test_ids)
+    return train_ids, val_ids, test_ids
 
-    save_subset("train", train_ids)
-    save_subset("val", val_ids)
-    save_subset("test", test_ids)
+
+def quantile_binary(df, col, q=0.30, ref=None):
+    s = (df[col] if ref is None else ref).astype(float)
+    low = s.quantile(q, interpolation="higher")
+    high = s.quantile(1 - q, interpolation="lower")
+
+    y = pd.Series(pd.NA, index=df.index, dtype="Int64")
+    x = df[col].astype(float)
+    y[x <= low] = 0
+    y[x >= high] = 1
+    return y, float(low), float(high)
 
 
 def preprocess_ppg_segment(signal, args, norm):
-    """
-    输入维度(args.fs_original,)
-    1) z-score 归一化 2) preprocess 3) 重采样到 args.fs_target 4) pad / 截断到 args.segment_length
-    返回 np.float32 的一维数组
-    """
     signal, _ = norm.apply(signal, fs=args.fs_original)
     signal, *_ = preprocess_one_ppg_signal(
         waveform=signal,
@@ -54,7 +100,7 @@ def preprocess_ppg_segment(signal, args, norm):
         fs_target=args.fs_target,
         axis=0,
     )
-    signal = np.asarray(signal).squeeze()  # 如果是一维则不会有影响
+    signal = np.asarray(signal).squeeze()
     if signal.size == 0:
         return None
 
@@ -69,7 +115,7 @@ def preprocess_ppg_segment(signal, args, norm):
     return signal.astype(np.float32)
 
 
-def prepare_PPGBP(args, data_root, ppg_dir, subject_dir, split_dir):
+def prepare_PPGBP(args, data_root, ppg_dir, subject_dir, split_dir, seed):
     norm = Normalize(method="z-score")
     df = pd.read_excel(os.path.join(data_root, "PPG-BP dataset.xlsx"), header=1)
     subjects = sorted(
@@ -110,16 +156,15 @@ def prepare_PPGBP(args, data_root, ppg_dir, subject_dir, split_dir):
         }
     ).fillna(0)
 
-    # 将 subject_ID 列转成指定长度的字符串
     df[args.case_name] = (
         df[args.case_name].astype(int).astype(str).str.zfill(args.subject_padding)
     )
     print(df[args.case_name].head())
 
-    split_by_subject_and_save(df, args, split_dir)
+    split_by_subject_and_save(df, args, split_dir, seed)
 
 
-def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir):
+def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir, seed):
     norm = Normalize(method="z-score")
 
     all_rows = []
@@ -132,7 +177,7 @@ def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir):
 
     for uid in uid_list:
         raw_df = pd.read_pickle(f"{subject_dir}/{uid}/{uid}.pkl")
-        # 原始 PPG 信号和 HR 标签
+        
         ppg_raw = raw_df["signal"]["wrist"]["BVP"]
         y_hr = raw_df["label"]
 
@@ -144,11 +189,11 @@ def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir):
         print(f"{uid} segments shape: {segments_raw.shape}")
         print(f"{uid} y_hr shape: {y_hr.shape}")
 
+
         save_dir = os.path.join(ppg_dir, uid)
         os.makedirs(save_dir, exist_ok=True)
 
         seg_idx = 0
-        # 根据 segments 生成每一行数据
         for i, ppg_seg_raw in enumerate(segments_raw):
             seg = preprocess_ppg_segment(
                 signal=ppg_seg_raw,
@@ -158,7 +203,6 @@ def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir):
             if seg is None:
                 continue
 
-            # 保存该 segment
             joblib.dump(seg, os.path.join(save_dir, f"{seg_idx}.p"))
             all_rows.append(
                 {
@@ -171,10 +215,10 @@ def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir):
 
     df = pd.DataFrame(all_rows, columns=[args.case_name, "idx", "hr"])
 
-    split_by_subject_and_save(df, args, split_dir)
+    split_by_subject_and_save(df, args, split_dir, seed)
 
 
-def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir):
+def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir, seed):
     window_size = int(10 * args.fs_original)
     fs = args.fs_original
     margin_samples = int(30 * fs)
@@ -201,7 +245,6 @@ def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir):
             start_idx = v["start_idx"]
             end_idx = v["end_idx"]
 
-            # 1️ 去头去尾各 30s（按样本点）
             start_eff = start_idx + margin_samples
             end_eff = end_idx - margin_samples
             period_len_samples = end_eff - start_eff
@@ -209,32 +252,25 @@ def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir):
             if period_len_samples < minute_samples:
                 continue
 
-            # 2 只保留“完整的整分钟”，最后不足 1 分钟的尾巴自动丢弃
-            num_minutes = period_len_samples // minute_samples  # 向下取整
+            num_minutes = period_len_samples // minute_samples 
 
             seg_folder_name = f"{uid}_{k}"
             seg_save_dir = os.path.join(ppg_dir, seg_folder_name)
             os.makedirs(seg_save_dir, exist_ok=True)
 
-            # 3 对每个“完整的一分钟”随机取一个 10s 片段
             for m in range(num_minutes):
-                # 当前分钟在有效区间内的起止索引（左闭右开）
                 minute_start = start_eff + m * minute_samples
                 minute_end = minute_start + minute_samples
 
-                # 这一分钟内能放下的 10s 窗口起点范围
                 max_start = minute_end - window_size
 
-                # 使用 args.seed 控制的 rng，在这一分钟里随机选一个起点
                 center_start = minute_start + (minute_samples - window_size) // 2
                 center_end = center_start + window_size
 
                 ppg_seg_raw = ppg[center_start:center_end]
 
-                # 预处理 + 保存
                 processed = preprocess_ppg_segment(ppg_seg_raw, args, norm)
 
-                # Save processed segment as .p file
                 joblib.dump(processed, os.path.join(seg_save_dir, f"{seg_idx}.p"))
 
                 # Collect row data
@@ -245,8 +281,6 @@ def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir):
                         "segment_name": k,
                         "valence": valence,
                         "arousal": arousal,
-                        "valence_binary": int(valence <= 5),
-                        "arousal_binary": int(arousal <= 5),
                     }
                 )
                 seg_idx += 1
@@ -255,10 +289,25 @@ def prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir):
     df = pd.DataFrame(all_rows)
     print(df.head())
 
-    split_by_subject_and_save(df, args, split_dir)
+    train_uids, val_uids, test_uids = split_by_subject_and_save(df, args, split_dir, seed, ifSave=False)
+    df_train = df[df[args.case_name].isin(train_uids)]
+
+    df["valence_binary_q"], v_lo, v_hi = quantile_binary(df, "valence", q=0.30, ref=df_train["valence"])
+    df["arousal_binary_q"], a_lo, a_hi = quantile_binary(df, "arousal", q=0.30, ref=df_train["arousal"])
+
+    df_q = df.dropna(subset=["valence_binary_q", "arousal_binary_q"]).copy()
+    df_q["valence_binary"] = df_q["valence_binary_q"].astype(int)
+    df_q["arousal_binary"] = df_q["arousal_binary_q"].astype(int)
+
+    print(f"[Quantile split] valence lo/hi = {v_lo}/{v_hi}, arousal lo/hi = {a_lo}/{a_hi}")
+    print(f"[Quantile split] keep {len(df_q)}/{len(df)} = {len(df_q)/len(df):.3f}")
+
+    split_dir= os.path.join(split_dir)
+    os.makedirs(split_dir, exist_ok=True)
+    split_by_subject_and_save(df_q, args, split_dir, seed)
 
 
-def prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir):
+def prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir, seed):
     norm = Normalize(method="z-score")
 
     json_files = sorted(glob.glob(os.path.join(subject_dir, "*.json")))
@@ -267,7 +316,7 @@ def prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir):
 
     for json_path in tqdm(json_files, desc="Preparing VV PPG segments"):
         json_path = Path(json_path)
-        case_id = json_path.stem  # 用文件名作为“病例/样本 id”
+        case_id = json_path.stem
 
         with open(json_path, "r") as f:
             data = json.load(f)
@@ -276,7 +325,7 @@ def prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir):
             timeseries = np.array(
                 data["scenarios"][1]["recordings"]["ppg"]["timeseries"]
             )
-            ppg = timeseries[:, 1]  # 第 2 列是 PPG 值
+            ppg = timeseries[:, 1]
 
             bp_sys = data["scenarios"][1]["recordings"]["bp_sys"]["value"]
             bp_dia = data["scenarios"][1]["recordings"]["bp_dia"]["value"]
@@ -284,11 +333,9 @@ def prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir):
             print(f"Invalid format in {json_path}: {e}")
             continue
 
-        # 将 PPG 三等分，不能整除的尾部不要
         n_total = len(ppg)
         seg_len = n_total // 3
 
-        # 为该 json 建一个单独目录存放所有 segment
         case_ppg_dir = os.path.join(ppg_dir, case_id)
         os.makedirs(case_ppg_dir, exist_ok=True)
 
@@ -301,18 +348,15 @@ def prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir):
 
             ppg_seg_raw = ppg[start:end]
 
-            # 送进统一的预处理函数
             seg = preprocess_ppg_segment(signal=ppg_seg_raw, args=args, norm=norm)
             if seg is None:
                 continue
 
-            # 保存 segment
             joblib.dump(seg, os.path.join(case_ppg_dir, f"{seg_idx}.p"))
 
-            # 记录 csv 中的一行
             all_rows.append(
                 {
-                    args.case_name: case_id,  # 和其他数据集保持一致
+                    args.case_name: case_id,
                     "idx": seg_idx,
                     "sysbp": float(bp_sys),
                     "diasbp": float(bp_dia),
@@ -321,30 +365,29 @@ def prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir):
 
             seg_idx += 1
 
-    # 汇总成 DataFrame 并按“case_id”划分 train/val/test
     df = pd.DataFrame(all_rows)
     print(df.head())
-    split_by_subject_and_save(df, args, split_dir)
+    split_by_subject_and_save(df, args, split_dir, seed)
 
 
-def prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir):
-    window_size = int(10 * args.fs_original)   # 10 秒窗口
+def prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir, seed):
+    window_size = int(10 * args.fs_original)
     fs = args.fs_original
     hour_samples = int(60 * 60 * fs)
 
     norm = Normalize(method="z-score")
     all_rows = []
 
-    # 1) AHI.csv 固定在 data_root 下
     ahi_path = os.path.join(data_root, "AHI.csv")
     df_ahi = pd.read_csv(ahi_path)
+    ahi_median = df_ahi["AHI"].median()
+    print("AHI median threshold =", ahi_median)
 
     for _, row in df_ahi.iterrows():
-        subject_num = row["subjectNumber"]
+        subject_num = int(row["subjectNumber"])
         ahi_value = row["AHI"]
         uid = f"subject{subject_num}"
 
-        # 2) 数据 csv 固定在 subject_dir 下
         subject_file = os.path.join(subject_dir, f"{uid}.csv")
         if not os.path.exists(subject_file):
             print(f"[WARN] PPG file not found for subject {subject_num}: {subject_file}")
@@ -352,21 +395,17 @@ def prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir):
 
         df_ppg = pd.read_csv(subject_file)
 
-        # 3) 去掉对列名的假设：直接取第一列作为 PPG
         ppg = df_ppg["pleth"].values
         n_samples = len(ppg)
 
-        # 总长度至少要大于 2 小时，否则删除首尾 1h 后就没有中间可用数据
         if n_samples <= 2 * hour_samples:
             print(f"[WARN] subject {subject_num} length too short (< 2h), skip.")
             continue
 
-        # 4) 删除掉第一个小时和最后一个小时，只保留中间部分
         valid_start = hour_samples
-        valid_end = n_samples - hour_samples   # 右开区间
+        valid_end = n_samples - hour_samples
         period_len = valid_end - valid_start
 
-        # 中间可用部分按整小时划分
         num_hours = period_len // hour_samples
         if num_hours == 0:
             print(f"[WARN] subject {subject_num} has no full hour after trimming, skip.")
@@ -377,8 +416,6 @@ def prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir):
 
         seg_idx = 0
 
-        # 5) 对每个完整小时：在开头以及等分线上选取 5 个 10s 窗口
-        #    等分指在 [0, hour_samples - window_size] 范围等距取 5 个起点
         for h in range(num_hours):
             hour_start = valid_start + h * hour_samples
             hour_end = hour_start + hour_samples
@@ -386,7 +423,6 @@ def prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir):
             if hour_end > valid_end:
                 break
 
-            # 5 个起点（包含开头与最后一个可放下 10s 窗口的位置）
             positions = np.linspace(0, hour_samples - window_size, num=5).astype(int)
 
             for offset in positions:
@@ -399,19 +435,19 @@ def prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir):
                 ppg_seg_raw = ppg[seg_start:seg_end]
 
                 processed = preprocess_ppg_segment(ppg_seg_raw, args, norm)
+
+                # print(processed.size)
                 if processed is None or processed.size == 0:
                     continue
 
-                # 保存 .p 文件
                 joblib.dump(processed, os.path.join(seg_save_dir, f"{seg_idx}.p"))
 
-                # 记录 meta 信息
                 all_rows.append(
                     {
                         args.case_name: uid,
                         "idx": seg_idx,
                         "hour_idx": h,
-                        "AHI": int(ahi_value > 0)
+                        "AHI": int(ahi_value > ahi_median)
                     }
                 )
                 seg_idx += 1
@@ -419,33 +455,28 @@ def prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir):
     df = pd.DataFrame(all_rows)
     print(df.head())
 
-    # 按 subject（args.case_name）划分并保存 train/val/test csv
-    split_by_subject_and_save(df, args, split_dir)
+    split_by_subject_and_save(df, args, split_dir, seed)
 
 
-def prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir):
+def prepare_ecsmp_save(args, data_root, ppg_dir, subject_dir, split_dir, seed):
     fs = args.fs_original
-    window_size = int(10 * fs)   # 10 秒窗口（PPG 点数）
+    window_size = int(10 * fs) 
     hour_samples = int(3600 * fs)
-    trim_samples = int(10 * 60 * fs)   # 掐头去尾各 10 分钟
+    trim_samples = int(10 * 60 * fs) 
     max_4h_samples = int(4 * 3600 * fs)
 
     norm = Normalize(method="z-score")
     all_rows = []
 
-    # 1) 由 tmd_data 和 e4_ids 构造每个受试者的 TMD 及二值标签
     e4_tmd_mapping = [(eid, tmd_data.get(eid)) for eid in e4_ids]
     df_files = pd.DataFrame(e4_tmd_mapping, columns=["ID", "TMD"])
 
-    # Pandas 会把 None 转成 NaN，median 会自动忽略
     tmd_median = df_files["TMD"].median()
     df_files["TMD_binary"] = (df_files["TMD"] > tmd_median).astype(int)
 
     print(f"[ECSMP] TMD median: {tmd_median}")
     print(df_files.head())
 
-    # 2) E4 原始数据目录（根据你实际解压路径调整）
-    #    常见布局：data_root/E4/<ID>/BVP.csv
     e4_root = os.path.join(data_root, "E4")
 
     for _, row in df_files.iterrows():
@@ -457,19 +488,19 @@ def prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir):
             print(f"[WARN][ECSMP] BVP file not found for ID {uid}: {bvp_path}")
             continue
 
-        # 原始 ECSMP 的 BVP.csv 第 1 行通常是 header，数据在后面
-        df_ppg = pd.read_csv(bvp_path, header=None, skiprows=1)
-        # 只取第一列作为 PPG
-        ppg = df_ppg.iloc[:, 0].values
+        with open(bvp_path, "r") as f:
+            start_ts = float(f.readline().strip())
+            fs_in_file = float(f.readline().strip())
+        ppg = pd.read_csv(bvp_path, header=None, skiprows=2).iloc[:, 0].to_numpy()
+        assert int(round(fs_in_file)) == 64
+
         n_samples = len(ppg)
 
         if n_samples < window_size:
             print(f"[WARN][ECSMP] ID {uid} shorter than one 10s window, skip.")
             continue
 
-        # 2.1) 若总时长 > 4 小时，只使用中间连续 4 小时子区间
         if n_samples > max_4h_samples:
-            # 以样本数为单位在中间截取一个 4 小时子区间
             start_4h = (n_samples - max_4h_samples) // 2
             end_4h = start_4h + max_4h_samples
             ppg = ppg[start_4h:end_4h]
@@ -477,7 +508,6 @@ def prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir):
             print(f"[INFO][ECSMP] ID {uid} longer than 4h, "
                   f"using middle 4h segment: samples {start_4h}-{end_4h}.")
 
-        # 2.2) 掐头去尾各 10 分钟
         if n_samples <= 2 * trim_samples + window_size:
             print(f"[WARN][ECSMP] ID {uid} not enough data after trimming 10min head/tail, skip.")
             continue
@@ -487,36 +517,26 @@ def prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir):
         ppg_valid = ppg[valid_start:valid_end]
         valid_len = len(ppg_valid)
 
-        # 至少需要 1 个完整小时
         if valid_len < hour_samples:
             print(f"[WARN][ECSMP] ID {uid} valid data shorter than 1 hour after trimming, skip.")
             continue
 
-        # 3) 在剩余有效数据中按每 1 小时划分时间窗口（只用完整小时）
         num_hours = valid_len // hour_samples
         if num_hours == 0:
             print(f"[WARN][ECSMP] ID {uid} no full 1h window, skip.")
             continue
 
-        # 保存该 subject 的所有 .p 文件到 ppg_dir/uid 下
         seg_save_dir = os.path.join(ppg_dir, uid)
         os.makedirs(seg_save_dir, exist_ok=True)
 
         seg_idx = 0
 
         for h in range(num_hours):
-            hour_offset = h * hour_samples  # 在 ppg_valid 中的起点
-            # 当前 1 小时窗口的 PPG
+            hour_offset = h * hour_samples 
             hour_ppg = ppg_valid[hour_offset: hour_offset + hour_samples]
-
-            # 4) 在该 1 小时内选取 5 段 10 秒的 segment
-            #    做法：在 [0, hour_samples - window_size] 上均匀选 5 个起点
-            #    这样第一个起点自然靠近小时开始，其余 4 个均匀覆盖全小时
             max_seg_start = hour_samples - window_size
             if max_seg_start <= 0:
                 continue
-
-            # 返回 5 个整型起点（包含 0 和 max_seg_start）
             seg_starts_in_hour = np.linspace(
                 0,
                 max_seg_start,
@@ -525,25 +545,21 @@ def prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir):
             )
 
             for seg_start_in_hour in seg_starts_in_hour:
-                # 全局上在 ppg 中的位置 = valid_start + hour_offset + seg_start_in_hour
                 global_start = valid_start + hour_offset + int(seg_start_in_hour)
                 global_end = global_start + window_size
 
-                # 这里用 ppg 而不是 ppg_valid，以便索引保持一致，但二者在该范围内等价
                 ppg_seg_raw = ppg[global_start:global_end]
 
                 processed = preprocess_ppg_segment(ppg_seg_raw, args, norm)
                 if processed is None or processed.size == 0:
                     continue
 
-                # 保存 .p 文件
                 seg_path = os.path.join(seg_save_dir, f"{seg_idx}.p")
                 joblib.dump(processed, seg_path)
 
-                # 记录 meta 信息
                 all_rows.append(
                     {
-                        args.case_name: uid,   # 与 split_by_subject_and_save 保持一致
+                        args.case_name: uid,
                         "idx": seg_idx,
                         "TMD": tmd_binary,
                     }
@@ -556,7 +572,120 @@ def prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir):
     df = pd.DataFrame(all_rows)
     print(df.head())
 
-    split_by_subject_and_save(df, args, split_dir)
+    split_by_subject_and_save(df, args, split_dir, seed)
+
+
+def prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir, seed):
+    window_sec = 10
+    trim_minutes = 10
+    
+    norm = Normalize(method="z-score")
+    all_rows = []
+
+    e4_tmd_mapping = [(eid, tmd_data.get(eid)) for eid in e4_ids]
+    df_files = pd.DataFrame(e4_tmd_mapping, columns=["ID", "TMD"])
+
+    tmd_median = df_files["TMD"].median()
+    df_files["TMD_binary"] = (df_files["TMD"] > tmd_median).astype(int)
+
+    print(f"[ECSMP] TMD median: {tmd_median}")
+    print(df_files.head())
+
+    e4_root = os.path.join(data_root, "E4")
+
+    for _, row in df_files.iterrows():
+        uid = row["ID"]
+        tmd_binary = int(row["TMD_binary"])
+
+        bvp_path = os.path.join(e4_root, uid, "BVP.csv")
+        if not os.path.exists(bvp_path):
+            print(f"[WARN][ECSMP] BVP file not found for ID {uid}: {bvp_path}")
+            continue
+
+        with open(bvp_path, "r") as f:
+            start_ts = float(f.readline().strip())
+            fs_in_file = float(f.readline().strip())
+
+        fs = int(round(fs_in_file))
+        if fs != 64:
+            print(f"[WARN][ECSMP] ID {uid} unexpected fs={fs_in_file}, rounded={fs}")
+        window_size = int(window_sec * fs)
+        hour_samples = int(3600 * fs)
+        trim_samples = int(trim_minutes * 60 * fs)
+
+        ppg = pd.read_csv(bvp_path, header=None, skiprows=2).iloc[:, 0].to_numpy()
+        n_samples = len(ppg)
+
+        if n_samples < window_size:
+            print(f"[WARN][ECSMP] ID {uid} shorter than one 10s window, skip.")
+            continue
+
+        if n_samples <= 2 * trim_samples + window_size:
+            print(f"[WARN][ECSMP] ID {uid} not enough data after trimming 10min head/tail, skip.")
+            continue
+
+        valid_start = trim_samples
+        valid_end = n_samples - trim_samples
+        ppg_valid = ppg[valid_start:valid_end]
+        valid_len = len(ppg_valid)
+
+        if valid_len < hour_samples:
+            print(f"[WARN][ECSMP] ID {uid} valid data shorter than 1 hour after trimming, skip.")
+            continue
+
+        num_hours = valid_len // hour_samples
+        if num_hours == 0:
+            print(f"[WARN][ECSMP] ID {uid} no full 1h window, skip.")
+            continue
+
+        seg_save_dir = os.path.join(ppg_dir, uid)
+        os.makedirs(seg_save_dir, exist_ok=True)
+        seg_idx = 0
+
+        for h in range(num_hours):
+            hour_offset = h * hour_samples
+
+            max_seg_start = hour_samples - window_size
+            if max_seg_start <= 0:
+                continue
+
+            seg_starts_in_hour = np.linspace(0, max_seg_start, num=5, dtype=int)
+
+            for seg_start_in_hour in seg_starts_in_hour:
+                global_start = valid_start + hour_offset + int(seg_start_in_hour)
+                global_end = global_start + window_size
+
+                ppg_seg_raw = ppg[global_start:global_end]
+
+                if reject_flat_or_saturated(ppg_seg_raw):
+                    continue
+                if reject_extreme_amplitude(ppg_seg_raw):
+                    continue
+                if reject_bad_hr_by_peaks(ppg_seg_raw, fs=fs):
+                    continue
+
+                processed = preprocess_ppg_segment(ppg_seg_raw, args, norm)
+                if processed is None or processed.size == 0:
+                    continue
+
+                seg_path = os.path.join(seg_save_dir, f"{seg_idx}.p")
+                joblib.dump(processed, seg_path)
+
+                all_rows.append({
+                        args.case_name: uid,
+                        "idx": seg_idx,
+                        "TMD": tmd_binary,
+                    })
+                seg_idx += 1
+
+        if seg_idx == 0:
+            print(f"[WARN][ECSMP] ID {uid} produced no valid segments after preprocessing.")
+
+    df = pd.DataFrame(all_rows)
+    print(df.head())
+
+    split_by_subject_and_save(df, args, split_dir, seed)
+
 
 def get_csv(args):
     download_dir = args.download_dir
@@ -575,35 +704,35 @@ def get_csv(args):
         os.makedirs(ppg_dir, exist_ok=True)
         os.makedirs(split_dir, exist_ok=True)
 
+        seed = SEED_MAP.get(dataset, 42)
+
         if dataset == "ppg-bp":
-            prepare_PPGBP(args, data_root, ppg_dir, subject_dir, split_dir)
+            prepare_PPGBP(args, data_root, ppg_dir, subject_dir, split_dir, seed)
         elif dataset == "dalia":
-            prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir)
+            prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir, seed)
         elif dataset == "wesad":
-            prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir)
+            prepare_wesad(args, data_root, ppg_dir, subject_dir, split_dir, seed)
         elif dataset == "vv":
-            prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir)
+            prepare_vv(args, data_root, ppg_dir, subject_dir, split_dir, seed)
         elif dataset == "sdb":
-            prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir)
+            prepare_sdb(args, data_root, ppg_dir, subject_dir, split_dir, seed)
         elif dataset == "ecsmp":
-            prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir)
+            prepare_ecsmp(args, data_root, ppg_dir, subject_dir, split_dir, seed)
 
 
 def build_parser():
     parser = argparse.ArgumentParser(description="PPG downstream CSV preparation")
 
-    # 只保留真正用到的参数
     parser.add_argument("--download_dir", type=str, default="../data/downstream")
     parser.add_argument(
         "--case_name",
         type=str,
-        default="subject_ID",  # 统一的在df中取用被试id的列名
+        default="subject_ID", 
     )
     parser.add_argument("--fs_target", type=int, default=125)
     parser.add_argument("--segment_length", type=int, default=1250)
     parser.add_argument("--segments_per_subject", type=int, default=3)
     parser.add_argument("--subject_padding", type=int, default=4)
-    parser.add_argument("--seed", type=int, default=911)
 
     return parser
 

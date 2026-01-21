@@ -1,7 +1,3 @@
-# © 2024 Nokia
-# Licensed under the BSD 3 Clause Clear License
-# SPDX-License-Identifier: BSD-3-Clause-Clear
-
 import torch 
 import os
 import pandas as pd
@@ -104,9 +100,6 @@ class EfficientNetB0(torch.nn.Module):
             MBConvBlock(112, 192, 6, 5, 2),
             MBConvBlock(192, 192, 6, 5, 1),
             MBConvBlock(192, 192, 6, 5, 1),
-            # MBConvBlock(192, 192, 6, 5, 1),
-
-            # MBConvBlock(192, 320, 6, 3, 1),
         )
 
         # Head
@@ -121,13 +114,8 @@ class EfficientNetB0(torch.nn.Module):
         self.mlp_head = torch.nn.Sequential(
             torch.nn.Linear(1280, 512),
             torch.nn.ReLU(),
-            torch.nn.Linear(512, out_dim),
-            # torch.nn.ReLU(),
-            # torch.nn.Linear(256, 128)            
+            torch.nn.Linear(512, out_dim),   
         )
-        # Global average pooling and classifier
-        # 
-        # self.fc = torch.nn.Linear(1280, classes)
 
     def forward(self, x):
         x = self.stem(x)
@@ -155,46 +143,13 @@ class EfficientNetB0Small(torch.nn.Module):
 
             MBConvBlock(16, 24, 6, 3, 2),
             MBConvBlock(24, 24, 6, 3, 1),
-
-            # MBConvBlock(24, 40, 6, 5, 2),
-            # MBConvBlock(40, 40, 6, 5, 1),
-
-            # MBConvBlock(40, 80, 6, 3, 2),
-            # MBConvBlock(80, 80, 6, 3, 1),
-            # MBConvBlock(80, 80, 6, 3, 1),
-
-
-            # MBConvBlock(80, 112, 6, 5, 1),
-            # MBConvBlock(112, 112, 6, 5, 1),
-            # MBConvBlock(112, 112, 6, 5, 1),
-
-            # MBConvBlock(112, 192, 6, 5, 2),
-            # MBConvBlock(192, 192, 6, 5, 1),
-            # MBConvBlock(192, 192, 6, 5, 1),
-            # MBConvBlock(192, 192, 6, 5, 1),
-
-            # MBConvBlock(192, 320, 6, 3, 1),
         )
-
-        # Head
-        # self.conv_head = torch.nn.Sequential(
-        #     torch.nn.Conv1d(112, 1280, kernel_size=1, stride=1, padding=0, bias=False),
-        #     torch.nn.BatchNorm1d(1280),
-        #     torch.nn.LeakyReLU(0.02)
-        # )
         
         self.avg_pool = torch.nn.AdaptiveAvgPool1d(1)
         
         self.mlp_head = torch.nn.Sequential(
-            torch.nn.Linear(24, 128),
-            # torch.nn.ReLU(),
-            # torch.nn.Linear(512, 256),
-            # torch.nn.ReLU(),
-            # torch.nn.Linear(256, 128)            
+            torch.nn.Linear(24, 128),        
         )
-        # Global average pooling and classifier
-        # 
-        # self.fc = torch.nn.Linear(1280, classes)
 
     def forward(self, x):
         x = self.stem(x)
@@ -257,9 +212,6 @@ class EfficientNetB0Base(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(1024, 512),        
         )
-        # Global average pooling and classifier
-        # 
-        # self.fc = torch.nn.Linear(1280, classes)
 
     def forward(self, x):
         x = self.stem(x)

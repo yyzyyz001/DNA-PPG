@@ -1,6 +1,4 @@
 import torch
-# torch.backends.cudnn.benchmark = True
-# torch.set_float32_matmul_precision('high')
 import torch.nn as nn
 import numpy as np
 from timm.models.vision_transformer import Block
@@ -40,10 +38,6 @@ class PatchEmbed1D(nn.Module):
         x = x.permute(0, 2, 1).contiguous() # (B, P, E)
         return x
 
-
-# ----------------------------
-# 单层编码器（timm Block 封装）
-# ----------------------------
 class EncoderLayer(nn.Module):
     def __init__(self, embed_dim=768, num_heads=12, mlp_ratio=4.0, qkv_bias=True,
                  norm_layer=nn.LayerNorm, drop=0.0):
@@ -63,17 +57,7 @@ class EncoderLayer(nn.Module):
         return self.block(x)
 
 
-# ----------------------------
-# 纯 ViT-1D 编码器（无 nvar）
-# ----------------------------
 class Vit1DEncoder(nn.Module):
-    """
-    仅编码，不包含 MAE 的随机掩码、解码器和重建损失。
-    - 输入:  (B, 1, T)
-    - 输出:
-        forward_tokens  -> (B, P+1, E)  # 全部 token（含 CLS）
-        forward_pooled  -> (B, E)       # 池化后的单向量
-    """
     def __init__(self,
                  ts_len=1250,
                  patch_size=10,
@@ -116,7 +100,6 @@ class Vit1DEncoder(nn.Module):
 
     # -------- init --------
     def initialize_weights(self):
-        # 固定 1D sin-cos 位置编码
         with torch.no_grad():
             grid = np.arange(self.pos_embed.shape[-2], dtype=np.float32)
             pe = get_1d_sincos_pos_embed_from_grid(self.pos_embed.shape[-1], grid)
@@ -163,21 +146,10 @@ class Vit1DEncoder(nn.Module):
     # -------- public APIs --------
     @torch.no_grad()
     def forward_tokens(self, x: torch.Tensor):
-        """
-        返回全部 token（含 CLS）
-        输入:  (B, 1, T)
-        输出:  (B, P+1, E)
-        """
         return self._encode(x)
 
     @torch.no_grad()
     def forward_pooled(self, x: torch.Tensor, pool_type: str = "cls"):
-        """
-        返回单向量表示：
-        - "cls": 取 CLS token
-        - "mean": 对所有 patch token 取平均（不含 CLS）
-        输出: (B, E)
-        """
         pool = pool_type or self.pool_type
         tokens = self._encode(x)               # (B, P+1, E)
         if pool == "cls":

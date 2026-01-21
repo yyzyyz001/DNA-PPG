@@ -13,18 +13,14 @@ import biobss
 from dotmap import DotMap
 from scipy.signal import resample_poly
 
-# 初始化预处理器
 prep = PP.Preprocess(fL=0.5, fH=12, order=4, sm_wins={"ppg": 50, "vpg": 10, "apg": 10, "jpg": 10})
 
 def extract_ppg_spo2_hr_by_name(edf_path, pleth_name="Pleth", spo2_name="SpO2", hr_name="HR"):
-    """读取EDF,重采样PPG至125Hz,并提取SpO2和HR"""
-    # 1. 读取 PPG 并重采样
     raw_pleth = read_raw_edf(edf_path, include=[pleth_name], infer_types=True, encoding="latin1", preload=True, verbose=False)
     pleth = raw_pleth.get_data(picks=[pleth_name])[0].astype(np.float32)
     sfreq_pleth = raw_pleth.info["sfreq"]
 
     fs_target = 125.0
-    # 计算重采样因子
     g = gcd(int(round(sfreq_pleth)), int(round(fs_target)))
     up = int(round(fs_target)) // g
     down = int(round(sfreq_pleth)) // g
@@ -34,7 +30,6 @@ def extract_ppg_spo2_hr_by_name(edf_path, pleth_name="Pleth", spo2_name="SpO2", 
     
     t_pleth_sec = np.arange(len(pleth), dtype=np.float32) / fs_target
 
-    # 2. 读取 Numeric 信号 (SpO2, HR)
     raw_1hz = read_raw_edf(edf_path, include=[spo2_name, hr_name], infer_types=True, encoding="latin1", preload=True, verbose=False)
     spo2 = raw_1hz.get_data(picks=[spo2_name])[0].astype(np.float32)
     hr = raw_1hz.get_data(picks=[hr_name])[0].astype(np.float32)
@@ -48,7 +43,6 @@ def extract_ppg_spo2_hr_by_name(edf_path, pleth_name="Pleth", spo2_name="SpO2", 
     }
 
 def preprocess_one_ppg_signal(waveform, frequency):
-    """使用 pyPPG 对 PPG 信号进行带通滤波等预处理"""
     signal = DotMap()
     signal.v = waveform
     signal.fs = frequency
@@ -57,13 +51,11 @@ def preprocess_one_ppg_signal(waveform, frequency):
     return ppg
 
 
-def get_valid_segments(ts, vals, min_len, fs):  # 获取非 NaN 的有效数据段。
+def get_valid_segments(ts, vals, min_len, fs):
     isnan = np.isnan(vals)
     if np.all(isnan):
         return []
 
-    # 构造 padding 以检测边缘
-    # valid: 1 表示有效, 0 表示无效
     is_valid = (~isnan).astype(np.int8)
     diff = np.diff(np.concatenate(([0], is_valid, [0])))
     
@@ -79,12 +71,10 @@ def get_valid_segments(ts, vals, min_len, fs):  # 获取非 NaN 的有效数据�
     return segments
 
 def save_raw_tracks_mesa(edf_path, output_dir, pleth_name, spo2_name, hr_name, signal_time=10):
-    """处理单个 EDF 文件：提取、对齐、分段预处理并保存"""
     subject_id = os.path.splitext(os.path.basename(edf_path))[0].split("-")[-1]
     save_dir = os.path.join(output_dir, subject_id)
     os.makedirs(save_dir, exist_ok=True)
 
-    # 提取数据
     try:
         out = extract_ppg_spo2_hr_by_name(edf_path, pleth_name, spo2_name, hr_name)
     except Exception as e:
@@ -96,30 +86,25 @@ def save_raw_tracks_mesa(edf_path, output_dir, pleth_name, spo2_name, hr_name, s
     t_ppg, ppg_raw = out["Pleth"]["t_sec"], out["Pleth"]["data"]
     t_num, spo2, hr = out["SpO2"]["t_sec"], out["SpO2"]["data"], out["HR"]["data"]
 
-    # 计算公共时间范围并裁剪
     common_t0 = max(t_ppg[0], t_num[0])
     common_t1 = min(t_ppg[-1], t_num[-1])
 
     if common_t1 <= common_t0:
         return
 
-    # 裁剪 PPG
     mask_ppg = (t_ppg >= common_t0) & (t_ppg <= common_t1)
     t_ppg = t_ppg[mask_ppg]
     ppg_raw = ppg_raw[mask_ppg]
 
-    # 裁剪 Numeric
     mask_num = (t_num >= common_t0) & (t_num <= common_t1)
     t_num = t_num[mask_num]
     hr = hr[mask_num]
     spo2 = spo2[mask_num]
 
-    # 获取有效片段
     valid_segments = get_valid_segments(t_ppg, ppg_raw, min_len=signal_time, fs=PPG_freq)
 
-    # 参数设置
-    block_core_sec = 20 * 60   # 20min 分块核心长度
-    overlap_sec = 10           # 边缘重叠
+    block_core_sec = 20 * 60   
+    overlap_sec = 10           
     block_core_len = int(block_core_sec * PPG_freq)
     overlap_len = int(overlap_sec * PPG_freq)
     seg_len = int(signal_time * PPG_freq)
@@ -127,35 +112,28 @@ def save_raw_tracks_mesa(edf_path, output_dir, pleth_name, spo2_name, hr_name, s
     seg_idx = 0
 
     for start, end in valid_segments:
-        # 在有效段内，按 20min + overlap 进行滑动处理
         blk0 = start
         while blk0 < end:
             blk1 = min(end, blk0 + block_core_len)
             
-            # 扩展包含 overlap 的处理区间
             raw0 = max(start, blk0 - overlap_len)
             raw1 = min(end,   blk1 + overlap_len)
 
             seg_vals = ppg_raw[raw0:raw1]
             seg_ts = t_ppg[raw0:raw1]
 
-            # 预处理 (耗时步骤)
             ppg_all = np.asarray(preprocess_one_ppg_signal(seg_vals, PPG_freq))
 
-            # 切掉 overlap，只取核心区域
             core0 = (blk0 - raw0) + overlap_len
             core1 = (blk1 - raw0) + overlap_len
             
-            # 边界检查：如果切完没了就跳过
             if core1 <= core0:
                 blk0 = blk1
                 continue
 
-            # 截取核心数据
             ppg_core = ppg_all[core0:core1]
             ts_core = seg_ts[core0:core1]
 
-            # 将核心区域切分为小的 signal_time (10s) 窗口
             n_segs = len(ppg_core) // seg_len
             
             for i in range(n_segs):
@@ -163,21 +141,17 @@ def save_raw_tracks_mesa(edf_path, output_dir, pleth_name, spo2_name, hr_name, s
                 i1 = (i + 1) * seg_len
                 
                 seg_ppg = ppg_core[i0:i1]
-                # 检查 PPG 是否全 NaN
                 if np.all(np.isnan(seg_ppg)):
                     continue
 
-                # 对应的时间范围
                 seg_t0 = float(ts_core[i0])
                 seg_t1 = seg_t0 + signal_time
 
-                # 匹配 Numeric 数据
                 win_mask = (t_num >= seg_t0) & (t_num < seg_t1)
                 hr_win = hr[win_mask]
                 spo2_win = spo2[win_mask]
                 t_win = t_num[win_mask]
 
-                # 检查 Numeric 是否有效
                 if t_win.size == 0 or (np.all(np.isnan(hr_win)) and np.all(np.isnan(spo2_win))):
                     continue
 
@@ -197,7 +171,6 @@ def save_raw_tracks_mesa(edf_path, output_dir, pleth_name, spo2_name, hr_name, s
 
 
 def is_signal_flat_lined(sig, fs, flat_time, signal_time, flat_threshold=0.25, change_threshold=0.01):
-    """检测信号是否含有过长的直线段"""
     signal_length = int(fs * signal_time)
     flat_segment_length = int(fs * flat_time)
 
@@ -225,7 +198,6 @@ def is_signal_flat_lined(sig, fs, flat_time, signal_time, flat_threshold=0.25, c
 
 
 def process_segment_check(fname, subject_dir, fs, flat_time, signal_time):
-    """并行处理的工作函数：加载并检查直线"""
     fpath = os.path.join(subject_dir, fname)
     try:
         with open(fpath, 'rb') as f:
@@ -238,11 +210,10 @@ def process_segment_check(fname, subject_dir, fs, flat_time, signal_time):
         flag = is_signal_flat_lined(ppg, fs, flat_time, signal_time)
         return fname, flag
     except:
-        return fname, 1 # 读取错误视为无效
+        return fname, 1
 
 
 def pkl2delete(pkl_path, fs, flat_time, signal_time, n_jobs=16):
-    """遍历生成的文件,删除平直线(flatline)过多的样本"""
     for subject_id in os.listdir(pkl_path):
         subject_dir = os.path.join(pkl_path, subject_id)
         if not os.path.isdir(subject_dir):
@@ -277,7 +248,6 @@ if __name__ == "__main__":
     parser.add_argument("--n_jobs", type=int, default=16)
     args = parser.parse_args()
 
-    # 1. 处理 EDF 文件
     edf_files = [f for f in os.listdir(args.edf_dir) if f.lower().endswith(".edf")]
     for f in tqdm(edf_files, desc="Processing EDFs"):
         edf_path = os.path.join(args.edf_dir, f)
@@ -290,7 +260,6 @@ if __name__ == "__main__":
             signal_time=args.signal_time
         )
 
-    # 2. 清洗直线信号
     print("[INFO] Running flatline detection cleanup...")
     pkl2delete(
         args.output_dir, 

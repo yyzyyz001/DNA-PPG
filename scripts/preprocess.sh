@@ -1,2 +1,0 @@
-python preProcessVital.py
-python preProcessMesa.py
