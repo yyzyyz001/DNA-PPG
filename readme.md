@@ -91,8 +91,37 @@ To fine-tune the pre-trained encoder on specific tasks:
 python dsPreProcess.py
 python -m downstream.parallel_executor
 cd downstream/
-python outcome_regression_all.py --model ckpt/dna_ppg.pt
-python outcome_classification_all.py --model ckpt/dna_ppg.pt
+python outcome_regression_all.py --model ../ckpt/dna_ppg.pt
+python outcome_classification_all.py --model ../ckpt/dna_ppg.pt
+```
+
+### 3. Loading the Pre-trained Model
+
+To load the pre-trained DNA-PPG checkpoint for your own research, ensure you initialize the `ResNet1D` backbone with the configuration used during pre-training:
+
+```python
+import torch
+from models.resnet1d import ResNet1D
+from utilities import load_model
+
+# 1. Initialize the backbone with pre-training configuration
+model = ResNet1D(
+    in_channels=1,
+    base_filters=64,
+    kernel_size=3,
+    stride=2,
+    groups=1,
+    n_block=18,
+    n_classes=512,
+)
+
+# 2. Load the checkpoint
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = load_model(model, "./ckpt/dna_ppg.pt", device)
+model.to(device)
+model.eval()
+
+print("DNA-PPG model loaded successfully.")
 ```
 
 ## 🧩 Model Architecture, Losses & Checkpoints
@@ -109,8 +138,6 @@ The core logic and pre-trained resources are organized as follows:
 - **`losses.py`**:
   - `loss_morph`: Implements **Eq. (5)** from the paper, utilizing the soft weights $w_{ij}$ to preserve morphology-invariant neighborhoods.
   - `loss_phys`: Implements **Eq. (11)**, calculating the affinity matrix $A$ based on continuous physiological semantic distances.
-
-
 
 ## 📝 Citation
 

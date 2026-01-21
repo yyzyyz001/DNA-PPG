@@ -4,40 +4,40 @@ wesad_s2_info = {
     'base': {
         'valence': 7,
         'arousal': 2,
-        'start_sec': 7*60 + 8,      # 7.08 -> 428s
-        'end_sec': 26*60 + 32,      # 26.32 -> 1592s
+        'start_sec': 7*60 + 8,      
+        'end_sec': 26*60 + 32,      
         'start_idx': (7*60 + 8) * SAMPLING_RATE,
         'end_idx': (26*60 + 32) * SAMPLING_RATE
     },
     'tsst': {
         'valence': 5,
         'arousal': 4,
-        'start_sec': 39*60 + 55,    # 39.55 -> 2395s
-        'end_sec': 50*60 + 30,      # 50.30 -> 3030s
+        'start_sec': 39*60 + 55,    
+        'end_sec': 50*60 + 30,      
         'start_idx': (39*60 + 55) * SAMPLING_RATE,
         'end_idx': (50*60 + 30) * SAMPLING_RATE
     },
     'medi1': {
         'valence': 7,
         'arousal': 2,
-        'start_sec': 70*60 + 19,    # 70.19 -> 4219s
-        'end_sec': 77*60 + 10,      # 77.10 -> 4630s
+        'start_sec': 70*60 + 19,    
+        'end_sec': 77*60 + 10,      
         'start_idx': (70*60 + 19) * SAMPLING_RATE,
         'end_idx': (77*60 + 10) * SAMPLING_RATE
     },
     'fun': {
         'valence': 8,
         'arousal': 1,
-        'start_sec': 81*60 + 25,    # 81.25 -> 4885s
-        'end_sec': 87*60 + 47,      # 87.47 -> 5267s
+        'start_sec': 81*60 + 25,    
+        'end_sec': 87*60 + 47,      
         'start_idx': (81*60 + 25) * SAMPLING_RATE,
         'end_idx': (87*60 + 47) * SAMPLING_RATE
     },
     'medi2': {
         'valence': 7,
         'arousal': 2,
-        'start_sec': 93*60 + 38,    # 93.38 -> 5618s
-        'end_sec': 100*60 + 15,     # 100.15 -> 6015s
+        'start_sec': 93*60 + 38,    
+        'end_sec': 100*60 + 15,     
         'start_idx': (93*60 + 38) * SAMPLING_RATE,
         'end_idx': (100*60 + 15) * SAMPLING_RATE
     }
@@ -268,40 +268,40 @@ wesad_s8_info = {
     'base': {
         'valence': 7,
         'arousal': 3,
-        'start_sec': 3*60 + 56,   # 3.56 → 236 秒
-        'end_sec': 23*60 + 45,    # 23.45 → 1425 秒
+        'start_sec': 3*60 + 56,   # 3.56 → 236 s
+        'end_sec': 23*60 + 45,    # 23.45 → 1425 s
         'start_idx': (3*60 + 56) * SAMPLING_RATE,   # 15104
         'end_idx': (23*60 + 45) * SAMPLING_RATE     # 91200
     },
     'fun': {
         'valence': 7,
         'arousal': 3,
-        'start_sec': 29*60 + 0,   # 29.00 → 1740 秒
-        'end_sec': 35*60 + 30,    # 35.30 → 2130 秒
+        'start_sec': 29*60 + 0,   # 29.00 → 1740 s
+        'end_sec': 35*60 + 30,    # 35.30 → 2130 s
         'start_idx': (29*60 + 0) * SAMPLING_RATE,   # 111360
         'end_idx': (35*60 + 30) * SAMPLING_RATE     # 136320
     },
     'medi1': {
         'valence': 7,
         'arousal': 2,
-        'start_sec': 39*60 + 52,  # 39.52 → 2392 秒
-        'end_sec': 46*60 + 52,    # 46.52 → 2812 秒
+        'start_sec': 39*60 + 52,  # 39.52 → 2392 s
+        'end_sec': 46*60 + 52,    # 46.52 → 2812 s
         'start_idx': (39*60 + 52) * SAMPLING_RATE,  # 153088
         'end_idx': (46*60 + 52) * SAMPLING_RATE     # 179968
     },
     'tsst': {
         'valence': 5,
         'arousal': 7,
-        'start_sec': 56*60 + 10,  # 56.10 → 3370 秒
-        'end_sec': 67*60 + 40,    # 67.40 → 4060 秒
+        'start_sec': 56*60 + 10,  # 56.10 → 3370 s
+        'end_sec': 67*60 + 40,    # 67.40 → 4060 s
         'start_idx': (56*60 + 10) * SAMPLING_RATE,  # 215680
         'end_idx': (67*60 + 40) * SAMPLING_RATE     # 259840
     },
     'medi2': {
         'valence': 6,
         'arousal': 4,
-        'start_sec': 82*60 + 54,  # 82.54 → 4974 秒
-        'end_sec': 89*60 + 50,    # 89.50 → 5390 秒
+        'start_sec': 82*60 + 54,  # 82.54 → 4974 s
+        'end_sec': 89*60 + 50,    # 89.50 → 5390 s
         'start_idx': (82*60 + 54) * SAMPLING_RATE,  # 318336
         'end_idx': (89*60 + 50) * SAMPLING_RATE     # 344960
     }
@@ -356,40 +356,40 @@ wesad_s10_info = {
     'base': {
         'valence': 6,
         'arousal': 2,
-        'start_sec': 2*60 + 5,      # 2.5 -> 125 秒
-        'end_sec': 22*60 + 5,       # 22.5 -> 1325 秒
+        'start_sec': 2*60 + 5,      # 2.5 -> 125 s
+        'end_sec': 22*60 + 5,       # 22.5 -> 1325 s
         'start_idx': (2*60 + 5) * SAMPLING_RATE,
         'end_idx': (22*60 + 5) * SAMPLING_RATE
     },
     'fun': {
         'valence': 8,
         'arousal': 2,
-        'start_sec': 27*60 + 53,    # 27.53 -> 1673 秒
-        'end_sec': 34*60 + 25,      # 34.25 -> 2065 秒
+        'start_sec': 27*60 + 53,    # 27.53 -> 1673 s
+        'end_sec': 34*60 + 25,      # 34.25 -> 2065 s
         'start_idx': (27*60 + 53) * SAMPLING_RATE,
         'end_idx': (34*60 + 25) * SAMPLING_RATE
     },
     'medi1': {
         'valence': 6,
         'arousal': 1,
-        'start_sec': 38*60 + 42,    # 38.42 -> 2322 秒
-        'end_sec': 45*60 + 40,      # 45.4 -> 2740 秒
+        'start_sec': 38*60 + 42,    # 38.42 -> 2322 s
+        'end_sec': 45*60 + 40,      # 45.4 -> 2740 s
         'start_idx': (38*60 + 42) * SAMPLING_RATE,
         'end_idx': (45*60 + 40) * SAMPLING_RATE
     },
     'tsst': {
         'valence': 3,
         'arousal': 8,
-        'start_sec': 54*60 + 30,    # 54.3 -> 3270 秒
-        'end_sec': 66*60 + 55,      # 66.55 -> 4015 秒
+        'start_sec': 54*60 + 30,    # 54.3 -> 3270 s
+        'end_sec': 66*60 + 55,      # 66.55 -> 4015 s
         'start_idx': (54*60 + 30) * SAMPLING_RATE,
         'end_idx': (66*60 + 55) * SAMPLING_RATE
     },
     'medi2': {
         'valence': 6,
         'arousal': 2,
-        'start_sec': 83*60 + 17,    # 83.17 -> 4997 秒
-        'end_sec': 90*60 + 15,      # 90.15 -> 5415 秒
+        'start_sec': 83*60 + 17,    # 83.17 -> 4997 s
+        'end_sec': 90*60 + 15,      # 90.15 -> 5415 s
         'start_idx': (83*60 + 17) * SAMPLING_RATE,
         'end_idx': (90*60 + 15) * SAMPLING_RATE
     }
@@ -400,40 +400,40 @@ wesad_s11_info = {
     'base': {
         'valence': 6,
         'arousal': 2,
-        'start_sec': 2*60 + 23,   # 143 秒
-        'end_sec': 22*60 + 23,    # 1343 秒
+        'start_sec': 2*60 + 23,   # 143 s
+        'end_sec': 22*60 + 23,    # 1343 s
         'start_idx': (2*60 + 23) * SAMPLING_RATE,  # 9152
         'end_idx': (22*60 + 23) * SAMPLING_RATE    # 85952
     },
     'tsst': {
         'valence': 4,
         'arousal': 6,
-        'start_sec': 32*60 + 45,  # 1965 秒
-        'end_sec': 44*60 + 25,    # 2665 秒
+        'start_sec': 32*60 + 45,  # 1965 s
+        'end_sec': 44*60 + 25,    # 2665 s
         'start_idx': (32*60 + 45) * SAMPLING_RATE, # 125760
         'end_idx': (44*60 + 25) * SAMPLING_RATE    # 170560
     },
     'medi1': {
         'valence': 7,
         'arousal': 2,
-        'start_sec': 60*60 + 30,  # 3630 秒
-        'end_sec': 67*60 + 25,    # 4045 秒
+        'start_sec': 60*60 + 30,  # 3630 s
+        'end_sec': 67*60 + 25,    # 4045 s
         'start_idx': (60*60 + 30) * SAMPLING_RATE, # 232320
         'end_idx': (67*60 + 25) * SAMPLING_RATE    # 258880
     },
     'fun': {
         'valence': 8,
         'arousal': 3,
-        'start_sec': 69*60 + 27,  # 4167 秒
-        'end_sec': 75*60 + 55,    # 4555 秒
+        'start_sec': 69*60 + 27,  # 4167 s
+        'end_sec': 75*60 + 55,    # 4555 s
         'start_idx': (69*60 + 27) * SAMPLING_RATE, # 266688
         'end_idx': (75*60 + 55) * SAMPLING_RATE    # 291520
     },
     'medi2': {
         'valence': 6,
         'arousal': 2,
-        'start_sec': 79*60 + 9,   # 4749 秒
-        'end_sec': 86*60 + 5,     # 5165 秒
+        'start_sec': 79*60 + 9,   # 4749 s
+        'end_sec': 86*60 + 5,     # 5165 s
         'start_idx': (79*60 + 9) * SAMPLING_RATE,  # 303936
         'end_idx': (86*60 + 5) * SAMPLING_RATE     # 330560
     }

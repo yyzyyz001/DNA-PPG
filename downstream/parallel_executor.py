@@ -52,39 +52,6 @@ fs_target = "125"
 
 
 def get_argument_combinations(dataset, split):
-    if dataset == "vital":  
-        resample = "True"
-        fs = "500"
-        normalize = "True"
-
-    if dataset == "mimic":
-        resample = "False"
-        fs = "125"
-        normalize = "True"
-
-    if dataset == "vital" or dataset == "mimic":
-        if split == "val" or split == "test":
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "60000", resample, normalize, fs, fs_target),
-            ]
-        else:
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "45000", resample, normalize, fs, fs_target),
-            ]
-
-    if dataset == "mesa":
-        resample = "True"
-        fs = "256"
-        normalize = "True"
-        if split == "test" or split == "val":
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "20000", resample, normalize, fs, fs_target),
-            ]
-        else:
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "20000", resample, normalize, fs, fs_target),
-            ]
-
     if dataset == "sdb":
         resample = "True"
         fs = "62.5"
@@ -135,32 +102,6 @@ def get_argument_combinations(dataset, split):
         else:
             return [
                 (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "1500", resample, normalize, fs, fs_target),
-            ]
-
-    if dataset == "numom2b":
-        resample = "False"
-        fs = "200"
-        normalize = "False"
-        if split == "test" or split == "val":
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "45000", resample, normalize, fs, fs_target),
-            ]
-        else:
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "40000", resample, normalize, fs, fs_target),
-            ]
-
-    if dataset == "bidmc" or dataset == "mimicAF":
-        resample = "False"
-        fs = "125"
-        normalize = "False"
-        if split == "test" or split == "val":
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "450", resample, normalize, fs, fs_target),
-            ]
-        else:
-            return [
-                (ARCHITECUTRE, MODEL_PATH, "2", dataset, split, f"../data/results/downstream/{dataset}/features", "0", "2250", resample, normalize, fs, fs_target),
             ]
 
     if dataset == "vv":
