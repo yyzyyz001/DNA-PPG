@@ -50,11 +50,9 @@ class NtXentLoss(nn.Module):
         sim = torch.exp(cov / temperature)
         neg = sim.sum(dim=-1)
 
-        # from each row, subtract e^1 to remove similarity measure for x1.x1
         row_sub = torch.Tensor(neg.shape).fill_(math.e).to(neg.device)
-        neg = torch.clamp(neg - row_sub, min=eps)  # clamp for numerical stability
+        neg = torch.clamp(neg - row_sub, min=eps) 
 
-        # Positive similarity, pos becomes [2 * batch_size]
         pos = torch.exp(torch.sum(out_1 * out_2, dim=-1) / temperature)
         pos = torch.cat([pos, pos], dim=0)
 

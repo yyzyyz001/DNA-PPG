@@ -8,30 +8,11 @@ import os
 import sys
 sys.path.append("../")
 from utilities import get_data_info
-from tqdm import tqdm
-from sklearn.metrics import roc_auc_score, f1_score
-from sklearn.utils import resample
 from math import gcd
 from scipy.signal import filtfilt, resample_poly
 from fractions import Fraction
 
 def get_data_for_ml(df, dict_embeddings, case_name, label, level="patient"):
-    """
-    Extract features and label starting from the dictionary
-    
-    Args:
-        df (pandas.DataFrame): dataframe containing user id, etc.
-        dict_embeddings (dictionary): dictionary containing extracted embeddings
-        case_name (string): column name for user id in dataframe 
-        label (string): label to extract
-        level (string): patient, averages value of segments for a user
-    
-    Returns:
-        X (np.array): feature array
-        y (np.array): label array
-        keys (list): test keys
-
-    """
     y = []
     if level == "patient":
         df = df.drop_duplicates(subset=[case_name])
@@ -44,39 +25,8 @@ def get_data_for_ml(df, dict_embeddings, case_name, label, level="patient"):
     y = np.hstack(y)
     return X, y, list(dict_embeddings.keys())
 
-def get_data_for_ml_from_df(df, dict_embeddings, case_name, label, level="patient"):
-    """
-    Extract features and label starting from the dataframe
-
-    Args:
-        df (pandas.DataFrame): dataframe containing user id, etc.
-        dict_embeddings (dictionary): dictionary containing extracted embeddings
-        case_name (string): column name for user id in dataframe 
-        label (string): label to extract
-        level (string): patient, averages value of segments for a user
-    
-    Returns:
-        X (np.array): feature array
-        y (np.array): label array
-        keys (list): test keys
-    """
-    X = []
-    y = []
-    df = df.drop_duplicates(subset=[case_name])
-    filenames = df[case_name].values
-    for f in filenames:
-        if f in dict_embeddings.keys():
-            if level == "patient":
-                y.append(df[df.loc[:, case_name] == f].loc[:, label].values[0])
-            else:    
-                y.append(df[df.loc[:, case_name] == f].loc[:, label].values)
-            X.append([k.cpu().detach().numpy() if type(k) == torch.Tensor else k for k in dict_embeddings[f]])
-    X = np.vstack(X)
-    return X, np.array(y), filenames
-
 def extract_labels(y, label, binarize_val = None):
     return y
-
 
 def bootstrap_metric_confidence_interval(y_test, y_pred, metric_func, num_bootstrap_samples=500, confidence_level=0.95):
     bootstrapped_metrics = []
@@ -193,12 +143,6 @@ def load_linear_probe_dataset_objs(dataset_name, model_name, label, func, conten
         dict_train = joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_train_{content}.p")
         dict_val = joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_val_{content}.p")
         dict_test = joblib.load(f"{prefix}../data/results/downstream/{dataset_name}/features/{model_name}/dict_test_{content}.p")
-
-    # binarize_val = None
-    # if label in ['bmi', 'es', 'cr', 'TMD']:
-    #     binarize_val = np.median(df_train.loc[:, label].values)
-    
-    # print(dict_train.keys())
     X_train, y_train, train_keys = func(df=df_train, 
                             dict_embeddings=dict_train,
                             case_name=case_name,
@@ -231,39 +175,6 @@ def load_linear_probe_dataset_objs(dataset_name, model_name, label, func, conten
         return X_train, y_train, X_test, y_test, train_keys, val_keys, test_keys
     else:
         return X_train, y_train, X_val, y_val, X_test, y_test, train_keys, val_keys, test_keys
-
-def load_linear_probe_dataset_combined(model_name, label, func, content, level, classification=True, concat=True, prefix="../"):
-    
-    if concat:
-        X_train_vital, y_train_vital, X_test_vital, y_test_vital, _, _, _ = load_linear_probe_dataset_objs(dataset_name='vital', model_name=model_name, label=label, func=func, content=content, classification=classification, level=level, concat=concat, prefix=prefix)
-        X_train_mesa, y_train_mesa, X_test_mesa, y_test_mesa, _, _, _ = load_linear_probe_dataset_objs(dataset_name='mesa', model_name=model_name, label=label, func=func, content=content, classification=classification, level=level, concat=concat, prefix=prefix)
-        X_train_mimic, y_train_mimic, X_test_mimic, y_test_mimic, _, _, _ = load_linear_probe_dataset_objs(dataset_name='mimic', model_name=model_name, label=label, func=func, content=content, classification=classification, level=level, concat=concat, prefix=prefix)
-
-        X_train = np.vstack((X_train_vital, X_train_mesa, X_train_mimic))
-        y_train = np.concatenate((y_train_vital, y_train_mesa, y_train_mimic))
-        X_test = np.vstack((X_test_vital, X_test_mesa, X_test_mimic))
-        y_test = np.concatenate((y_test_vital, y_test_mesa, y_test_mimic))
-
-        shuffle_idx = np.random.permutation(len(X_train))
-        X_train, y_train = X_train[shuffle_idx], y_train[shuffle_idx]
-
-        return X_train, y_train, X_test, y_test
-    else:
-        X_train_vital, y_train_vital, X_val_vital, y_val_vital, X_test_vital, y_test_vital, _, _, _ = load_linear_probe_dataset_objs(dataset_name='vital', model_name=model_name, label=label, func=func, content=content, classification=classification, level=level, concat=concat, prefix=prefix)
-        X_train_mesa, y_train_mesa, X_val_mesa, y_val_mesa, X_test_mesa, y_test_mesa, _, _, _ = load_linear_probe_dataset_objs(dataset_name='mesa', model_name=model_name, label=label, func=func, content=content, classification=classification, level=level, concat=concat, prefix=prefix)
-        X_train_mimic, y_train_mimic, X_val_mimic, y_val_mimic, X_test_mimic, y_test_mimic, _, _, _ = load_linear_probe_dataset_objs(dataset_name='mimic', model_name=model_name, label=label, func=func, content=content, classification=classification, level=level, concat=concat, prefix=prefix)
-
-        X_train = np.vstack((X_train_vital, X_train_mesa, X_train_mimic))
-        y_train = np.concatenate((y_train_vital, y_train_mesa, y_train_mimic))
-        X_val = np.vstack((X_val_vital, X_val_mesa, X_val_mimic))
-        y_val = np.concatenate((y_val_vital, y_val_mesa, y_val_mimic))
-        X_test = np.vstack((X_test_vital, X_test_mesa, X_test_mimic))
-        y_test = np.concatenate((y_test_vital, y_test_mesa, y_test_mimic))
-
-        shuffle_idx_train = np.random.permutation(len(X_train))
-        X_train, y_train = X_train[shuffle_idx_train], y_train[shuffle_idx_train]
-
-        return X_train, y_train, X_val, y_val, X_test, y_test
 
 def none_or_int(value):
     if value == 'None':

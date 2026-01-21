@@ -2,7 +2,7 @@ import numpy as np
 from tqdm import tqdm
 import sys
 import pandas as pd
-sys.path.append("../../../papagei-foundation-model/")
+sys.path.append("../../../DNA_PPG/")
 sys.path.append("../../")
 import torch.nn as nn
 import torch.optim as optim
@@ -16,7 +16,6 @@ import os
 from torch.utils.data import DataLoader
 from Mydataset import PPGSegmentDataset, build_index_csv
 from tqdm import tqdm
-from functools import lru_cache
 from torch_ecg._preprocessors import Normalize
 from datetime import datetime
 from torchvision import transforms
@@ -27,21 +26,17 @@ torch.autograd.set_detect_anomaly(True)
 
 def _get_base_model(model):
     base = model
-    if hasattr(base, "module"):    # DataParallel / DDP
+    if hasattr(base, "module"):    
         base = base.module
-    if hasattr(base, "_orig_mod"): # torch.compile 包装
+    if hasattr(base, "_orig_mod"): 
         base = base._orig_mod
     return base
 
 def save_model(model, directory, filename, content, step=None, prefix=None):
-    # prefix is used to adjust the path relative to the script location
-    # Assuming we want to save to ../../../data/results/SoftCL/ (relative to script)
-    # which matches ../data/results/SoftCL/ relative to SoftCL root
     
     root = os.path.join("../../../data/results/baselines/all", directory)
     os.makedirs(root, exist_ok=True)
 
-    # 取“未包装”的原始模块，导出干净权重并保存到 CPU
     base = _get_base_model(model)
     sd = {k: v.detach().cpu() for k, v in base.state_dict().items()}
     
@@ -54,20 +49,6 @@ def save_model(model, directory, filename, content, step=None, prefix=None):
     print(f"Model saved to {out_path}")
 
 def train_step(epoch, model, dataloader, optimizer, device):
-
-    """
-    One training epoch for a SimCLR model
-
-    Args:
-        model (torch.nn.Module): Model to train
-        dataloader (torch.utils.data.Dataloader): A training dataloader with signals
-        criterion (torch.nn.<Loss>): Loss function to optimizer
-        optimizer (torch.optim): Optimizer to modify weights
-        device (string): training device; use GPU
-
-    Returns:
-        train_loss (float): The training loss for the epoch
-    """
     
     model.to(device)
     model.train()
@@ -89,22 +70,6 @@ def train_step(epoch, model, dataloader, optimizer, device):
     return loss.item()
 
 def training(model, epochs, train_dataloader, optimizer, device, directory, filename, wandb=None):
-
-    """
-    Training a SimCLR model
-
-    Args:
-        model (torch.nn.Module): Model to train
-        epochs (int): No. of epochs to train
-        train_dataloader (torch.utils.data.Dataloader): A training dataloader with signals
-        criterion (torch.nn.<Loss>): Loss function to optimizer
-        optimizer (torch.optim): Optimizer to modify weights
-        device (string): training device; use GPU
-        wandb (wandb): wandb object for experiment tracking
-
-    Returns:
-        dict_log (dictionary): A dictionary log with metrics
-    """
 
     dict_log = {'train_loss': []}
     best_loss = float('inf')
@@ -144,12 +109,6 @@ def training(model, epochs, train_dataloader, optimizer, device, directory, file
 def main(epochs, batch_size, device_id=2):
     shuffle = True
     lr = 0.0001
-    
-    # Use the same augmentation probabilities as in TFC/SoftCL for consistency if desired, 
-    # or keep the original BYOL ones. The user asked to apply SoftCL dataset.
-    # In SoftCLtrain.py: ssl_prob_dictionary = {'g_p': 0.30, 'n_p': 0.0, 'w_p':0.20, 'f_p':0.0, 's_p':0.30, 'c_p':0.50}
-    # In original BYOL: prob_dictionary = {'g_p': 0.35, 'n_p': 0.20, 'w_p':0.0, 'f_p':0.20, 's_p':0.4, 'c_p':0.5}
-    # I will use the SoftCL ones to be consistent with the user's request "apply SoftCLtrain.py dataset".
     
     ssl_prob_dictionary = {'g_p': 0.30, 'n_p': 0.0, 'w_p':0.20, 'f_p':0.0, 's_p':0.30, 'c_p':0.50}
     
@@ -226,8 +185,6 @@ def main(epochs, batch_size, device_id=2):
             group=group_name)
 
     run_id = wandb.run.id
-    # wandb = None
-    # run_id = "mkhl43"
     time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     model_filename = f'{name}_{run_id}_{time}'
 

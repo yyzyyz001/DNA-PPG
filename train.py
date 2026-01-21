@@ -361,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--tau_ssl", type=float, default=0.1)
     parser.add_argument("--tau_sup", type=float, default=0.2)
     parser.add_argument("--sigma", type=float, default=1.0)
-    parser.add_argument("--data-source", type=str, default="all", choices=["mesa", "vitaldb", "all"], help="Select dataset source: mesa, vitaldb, or all")  ### 数据源选择
+    parser.add_argument("--data-source", type=str, default="all", choices=["mesa", "vitaldb", "all"], help="Select dataset source: mesa, vitaldb, or all")
     parser.add_argument("--indexCsv", type=str, default="../data/index/mesaVital_index.csv")
     parser.add_argument("--sup-weight", type=float, default=0.7)
     parser.add_argument("--sup_warmup_ratio", type=float, default=0.5)

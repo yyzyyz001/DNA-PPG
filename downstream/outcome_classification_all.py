@@ -7,7 +7,7 @@ import argparse
 sys.path.append("../")
 from classification import classification_model
 from regression import regression_model
-from utils import load_linear_probe_dataset_objs, bootstrap_metric_confidence_interval, get_data_for_ml, get_data_for_ml_from_df
+from utils import load_linear_probe_dataset_objs, get_data_for_ml
 from utilities import get_data_info, get_content_type
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.linear_model import LogisticRegression

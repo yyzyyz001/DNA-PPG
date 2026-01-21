@@ -10,10 +10,10 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from torch_ecg._preprocessors import Normalize
 
-from linearprobing.utils import resample_batch_signal
+from downstream.utils import resample_batch_signal
 from preprocessing.ppg import preprocess_one_ppg_signal
-from wesad_info import wesad_all_info
-from ecsmp_info import tmd_data, e4_ids
+from downstream.wesad_info import wesad_all_info
+from downstream.ecsmp_info import tmd_data, e4_ids
 import glob
 import json
 from utilities import SEED_MAP
@@ -53,7 +53,7 @@ def reject_bad_hr_by_peaks(x, fs, min_bpm=40, max_bpm=180):
         return True
     y = _bandpass(x, fs)
     peaks, _ = find_peaks(y, distance=int(0.3 * fs))
-    bpm = len(peaks) * 6.0  # 10s -> *6
+    bpm = len(peaks) * 6.0 
     return (bpm < min_bpm) or (bpm > max_bpm)
 
 def split_by_subject_and_save(df, args, split_dir, seed, ifSave=True):
@@ -181,10 +181,9 @@ def prepare_dalia(args, data_root, ppg_dir, subject_dir, split_dir, seed):
         ppg_raw = raw_df["signal"]["wrist"]["BVP"]
         y_hr = raw_df["label"]
 
-        # ppg_raw shape: (589568, 1)
-        x = ppg_raw.squeeze(-1)                  # -> (589568,)
-        windows = sliding_window_view(x, win)    # -> (589568 - win + 1, win)
-        segments_raw = windows[::hop]           # -> (len, win)
+        x = ppg_raw.squeeze(-1)                 
+        windows = sliding_window_view(x, win)    
+        segments_raw = windows[::hop]          
 
         print(f"{uid} segments shape: {segments_raw.shape}")
         print(f"{uid} y_hr shape: {y_hr.shape}")

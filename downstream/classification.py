@@ -5,7 +5,7 @@ import json
 from utils import bootstrap_metric_confidence_interval
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score, f1_score
+from sklearn.metrics import roc_auc_score, f1_score
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.base import clone

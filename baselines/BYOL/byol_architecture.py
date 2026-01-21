@@ -4,7 +4,7 @@ from functools import wraps
 
 import torch
 import sys
-sys.path.append("../../papagei-foundation-model")
+sys.path.append("../../DNA_PPG")
 from torch import nn
 import torch.nn.functional as F
 import baselines.BYOL.byol_losses as byol_losses
@@ -34,10 +34,6 @@ def singleton(cache_key):
     return inner_fn
 
 
-
-# augmentation utils
-
-
 class RandomApply(nn.Module):
     def __init__(self, fn, p):
         super().__init__()
@@ -48,9 +44,6 @@ class RandomApply(nn.Module):
         if random.random() > self.p:
             return x
         return self.fn(x)
-
-
-# exponential moving average
 
 
 class EMA:
@@ -72,8 +65,6 @@ def update_moving_average(ema_updater, ma_model, current_model):
         ma_params.data = ema_updater.update_average(old_weight, up_weight)
 
 
-# MLP class for projector and predictor
-
 
 class MLP(nn.Module):
     def __init__(self, dim, projection_size, hidden_size=1024):
@@ -87,12 +78,6 @@ class MLP(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-
-
-# a wrapper class for the base neural network
-# will manage the interception of the hidden layer output
-# and pipe it into the projecter and predictor nets
-
 
 class NetWrapper(nn.Module):
     def __init__(self, net, projection_size, projection_hidden_size, layer=-2):
@@ -151,8 +136,6 @@ class NetWrapper(nn.Module):
         return projection
 
 
-# main class
-
 class BYOL(nn.Module):
     def __init__(
         self,
@@ -165,7 +148,6 @@ class BYOL(nn.Module):
     ):
         super(BYOL, self).__init__()
         self.net = net
-        # self.net = getattr(resnet, encoder, None)(num_classes=projection_size)
         self.online_encoder = NetWrapper(
             self.net, projection_size, projection_hidden_size, layer=hidden_layer
         )

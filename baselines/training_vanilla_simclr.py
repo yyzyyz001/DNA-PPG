@@ -4,7 +4,6 @@ import sys
 sys.path.append("../")
 import pandas as pd
 import numpy as np
-# import torch.multiprocessing as mp
 import wandb
 import augmentations
 import joblib
@@ -15,25 +14,19 @@ from models.transformer import TransformerSimple
 from models import efficientnet
 from models.resnet import ResNet1D
 from pytorch_metric_learning import losses
-# from training import train_step, training
-# from torch.utils.data.distributed import DistributedSampler
-# from torch.nn.parallel import DistributedDataParallel as DDP
-# from torch.distributed import init_process_group, destroy_process_group
 from datetime import datetime
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from functools import lru_cache
 from torchvision import transforms
-# from training_pospair import harmonize_datasets
 from torch_ecg._preprocessors import Normalize
-# from training_distributed import ddp_setup, save_model
 
 torch.autograd.set_detect_anomaly(True)
 
 def _get_base_model(model):
     base = model
-    if hasattr(base, "module"):    # DataParallel / DDP
+    if hasattr(base, "module"):    
         base = base.module
-    if hasattr(base, "_orig_mod"): # torch.compile 包装
+    if hasattr(base, "_orig_mod"): 
         base = base._orig_mod
     return base
 
@@ -53,20 +46,6 @@ def save_model(model, directory, filename, content, step=None, prefix=None):
     print(f"Model saved to {out_path}")
 
 def train_step(epoch, model, dataloader, criterion, optimizer, device):
-
-    """
-    One training epoch for a SimCLR model
-
-    Args:
-        model (torch.nn.Module): Model to train
-        dataloader (torch.utils.data.Dataloader): A training dataloader with signals
-        criterion (torch.nn.<Loss>): Loss function to optimizer
-        optimizer (torch.optim): Optimizer to modify weights
-        device (string): training device; use GPU
-
-    Returns:
-        train_loss (float): The training loss for the epoch
-    """
     
     model.to(device)
     model.train()
@@ -92,22 +71,6 @@ def train_step(epoch, model, dataloader, criterion, optimizer, device):
 
 def training(model, epochs, train_dataloader, criterion, optimizer, device, directory, filename, wandb=None):
 
-    """
-    Training a SimCLR model
-
-    Args:
-        model (torch.nn.Module): Model to train
-        epochs (int): No. of epochs to train
-        train_dataloader (torch.utils.data.Dataloader): A training dataloader with signals
-        criterion (torch.nn.<Loss>): Loss function to optimizer
-        optimizer (torch.optim): Optimizer to modify weights
-        device (string): training device; use GPU
-        wandb (wandb): wandb object for experiment tracking
-
-    Returns:
-        dict_log (dictionary): A dictionary log with metrics
-    """
-
     dict_log = {'train_loss': []}
     best_loss = float('inf')
     save_interval = max(1, epochs // 10)
@@ -129,7 +92,6 @@ def training(model, epochs, train_dataloader, criterion, optimizer, device, dire
         if epoch_loss < best_loss:
             best_loss = epoch_loss
             print(f"Saving best model to: {directory}")
-            # Overwrite the best model file
             save_model(model, directory, filename, "best", step=step+1, prefix="../")
 
         if (step + 1) % save_interval == 0:
@@ -185,16 +147,6 @@ def main(epochs, batch_size, device_id):
                     shuffle=shuffle,
                     drop_last=True)
 
-    # model_config = {'d_model': 1250,
-    #            'nhead': 2,
-    #            'dim_feedforward': 2048,
-    #            'trans_dropout': 0.0,
-    #            'proj_dropout': 0.0,
-    #            'num_layers': 2,
-    #            'h1': 1024,
-    #            'embedding_size': 512}
-    # model = TransformerSimple(model_config=model_config)
-
     model_config = {'base_filters': 32,
                     'kernel_size': 3,
                     'stride': 2,
@@ -233,8 +185,6 @@ def main(epochs, batch_size, device_id):
             group=group_name)
 
     run_id = wandb.run.id
-    # wandb = None
-    # run_id = "a12d"
     time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     model_filename = f'{name}_{run_id}_{time}'
 
