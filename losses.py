@@ -19,7 +19,6 @@ def _softmax_without_diag(logits):  # logits: [B, B]
     return F.softmax(masked, dim=1)
 
 def _row_normalize(mat, eps=1e-12):
-    # Normalize each row to sum=1 (excluding diagonal which应已为0)
     row_sum = mat.sum(dim=1, keepdim=True) + eps
     return mat / row_sum
 

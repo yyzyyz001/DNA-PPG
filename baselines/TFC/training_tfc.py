@@ -3,7 +3,7 @@ from tqdm import tqdm
 import sys
 import pandas as pd
 import wandb
-sys.path.append("../../../SoftCL/")
+sys.path.append("../../../DNA_PPG/")
 sys.path.append("../../")
 from tfc_utils import NTXentLoss_poly
 from Mydataset import PPGSegmentDataset, build_index_csv
@@ -19,9 +19,9 @@ from datetime import datetime
 
 def _get_base_model(model):
     base = model
-    if hasattr(base, "module"):    # DataParallel / DDP
+    if hasattr(base, "module"): 
         base = base.module
-    if hasattr(base, "_orig_mod"): # torch.compile 包装
+    if hasattr(base, "_orig_mod"):
         base = base._orig_mod
     return base
 
@@ -29,7 +29,6 @@ def save_model(model, directory, filename, content, step=None, prefix=None):
     root = os.path.join("../../../data/results/baselines/all", directory)
     os.makedirs(root, exist_ok=True)
 
-    # 取“未包装”的原始模块，导出干净权重并保存到 CPU
     base = _get_base_model(model)
     sd = {k: v.detach().cpu() for k, v in base.state_dict().items()}
     
@@ -42,20 +41,6 @@ def save_model(model, directory, filename, content, step=None, prefix=None):
     print(f"Model saved to {out_path}")
 
 def train_step(epoch, model, dataloader, batch_size, optimizer, device):
-
-    """
-    One training epoch for a SimCLR model
-
-    Args:
-        model (torch.nn.Module): Model to train
-        dataloader (torch.utils.data.Dataloader): A training dataloader with signals
-        criterion (torch.nn.<Loss>): Loss function to optimizer
-        optimizer (torch.optim): Optimizer to modify weights
-        device (string): training device; use GPU
-
-    Returns:
-        train_loss (float): The training loss for the epoch
-    """
     global loss, loss_t, loss_f, l_TF, loss_c
 
     model.to(device)
@@ -82,14 +67,12 @@ def train_step(epoch, model, dataloader, batch_size, optimizer, device):
 
     loss_t = nt_xent_criterion(h_t, h_t_aug) 
     loss_f = nt_xent_criterion(h_f, h_f_aug)
-    l_TF = nt_xent_criterion(z_t, z_f) # this is the initial version of TF loss
+    l_TF = nt_xent_criterion(z_t, z_f)
 
 
     l_1, l_2, l_3 = nt_xent_criterion(z_t, z_f_aug), nt_xent_criterion(z_t_aug, z_f), nt_xent_criterion(z_t_aug, z_f_aug)
     loss_c = (1 + l_TF - l_1) + (1 + l_TF - l_2) + (1 + l_TF - l_3)
 
-    # lam = 0.5
-    # loss = lam * (loss_t + loss_f) + (1 - lam) * loss_c
     lam = 0.2 
     loss = lam*(loss_t + loss_f) + l_TF
 
@@ -101,22 +84,6 @@ def train_step(epoch, model, dataloader, batch_size, optimizer, device):
 
 
 def training(model, epochs, train_dataloader, batch_size, optimizer, device, directory, filename, wandb=None):
-
-    """
-    Training a TFC model
-
-    Args:
-        model (torch.nn.Module): Model to train
-        epochs (int): No. of epochs to train
-        train_dataloader (torch.utils.data.Dataloader): A training dataloader with signals
-        criterion (torch.nn.<Loss>): Loss function to optimizer
-        optimizer (torch.optim): Optimizer to modify weights
-        device (string): training device; use GPU
-        wandb (wandb): wandb object for experiment tracking
-
-    Returns:
-        dict_log (dictionary): A dictionary log with metrics
-    """
 
     dict_log = {'train_loss': []}
     best_loss = float('inf')

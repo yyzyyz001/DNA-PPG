@@ -7,6 +7,7 @@
 **DNA-PPG** is a novel pre-training framework designed to learn robust and universal representations for Photoplethysmography (PPG) signals. It addresses the limitations of existing physiological foundation models—specifically the manifold distortion caused by rigid hard-negative sampling and the precision loss from coarse discretization.
 
 Our framework introduces **Dual Neighborhood Alignment**:
+
 1.  **Morphology-Aware Self-Supervised Branch (Morph-SSL):** Uses Time-Frequency Soft Weighting (TF-Soft) to capture universal signal dynamics.
 2.  **Physiological Semantic Alignment Branch (Phys-Align):** Projects physiological indicators into a continuous semantic space to embed precise physiological priors.
 
@@ -36,8 +37,9 @@ Pre-trained on **10.7 million PPG segments** from over 8,400 subjects, DNA-PPG a
 
 To reproduce the experiments, please set up the environment using the following dependencies:
 
-- Python 3.8+
-- PyTorch >= 1.12
+- Python: 3.10
+- PyTorch: 2.3.1
+- CUDA: 12.1
 - NumPy
 - SciPy
 - Pandas
@@ -89,9 +91,26 @@ To fine-tune the pre-trained encoder on specific tasks:
 python dsPreProcess.py
 python -m downstream.parallel_executor
 cd downstream/
-python outcome_regression_all.py --model model_path
-python outcome_classification_all.py --model model_path
+python outcome_regression_all.py --model ckpt/dna_ppg.pt
+python outcome_classification_all.py --model ckpt/dna_ppg.pt
 ```
+
+## 🧩 Model Architecture, Losses & Checkpoints
+
+The core logic and pre-trained resources are organized as follows:
+
+- **`ckpt/dna_ppg.pt`**:
+   The **official pre-trained checkpoint** of DNA-PPG.
+  - It contains the weights of the **ResNet-1D** encoder (approx. 4.99M parameters).
+  - Trained on the full dataset (VitalDB + MESA, 10.7M segments) using the optimal joint strategy (α=0.7\alpha=0.7α=0.7) as reported in the paper.
+  - This file should be used to initialize the backbone for all downstream evaluations.
+- **`models/`**:
+   Contains the definition of the ResNet-1D backbone.
+- **`losses.py`**:
+  - `loss_morph`: Implements **Eq. (5)** from the paper, utilizing the soft weights wijw_{ij}wij to preserve morphology-invariant neighborhoods.
+  - `loss_phys`: Implements **Eq. (11)**, calculating the affinity matrix AAA based on continuous physiological semantic distances.
+
+
 
 ## 📝 Citation
 

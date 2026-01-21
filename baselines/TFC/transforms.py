@@ -10,22 +10,10 @@ def one_hot_encoding(X):
 def DataTransform(sample, config):
     """Weak and strong augmentations"""
     weak_aug = scaling(sample, config.augmentation.jitter_scale_ratio)
-    # weak_aug = permutation(sample, max_segments=config.augmentation.max_seg)
     strong_aug = jitter(permutation(sample, max_segments=config.augmentation.max_seg), config.augmentation.jitter_ratio)
 
     return weak_aug, strong_aug
 
-# def DataTransform_TD(sample, config):
-#     """Weak and strong augmentations"""
-#     weak_aug = sample
-#     strong_aug = jitter(permutation(sample, max_segments=config.augmentation.max_seg), config.augmentation.jitter_ratio) #masking(sample)
-#     return weak_aug, strong_aug
-#
-# def DataTransform_FD(sample, config):
-#     """Weak and strong augmentations in Frequency domain """
-#     # weak_aug =  remove_frequency(sample, 0.1)
-#     strong_aug = add_frequency(sample, 0.1)
-#     return weak_aug, strong_aug
 def DataTransform_TD(sample, config):
     """Simplely use the jittering augmentation. Feel free to add more autmentations you want,
     but we noticed that in TF-C framework, the augmentation has litter impact on the final tranfering performance."""
@@ -43,7 +31,7 @@ def DataTransform_TD_bank(sample, config):
 
     li = np.random.randint(0, 4, size=[sample.shape[0]])
     li_onehot = one_hot_encoding(li)
-    aug_1 = aug_1 * li_onehot[:, 0][:, None, None]  # the rows that are not selected are set as zero.
+    aug_1 = aug_1 * li_onehot[:, 0][:, None, None]
     aug_2 = aug_2 * li_onehot[:, 0][:, None, None]
     aug_3 = aug_3 * li_onehot[:, 0][:, None, None]
     aug_4 = aug_4 * li_onehot[:, 0][:, None, None]
@@ -83,17 +71,6 @@ def masking(x, keepratio=0.9, mask= 'binomial'):
 
     if mask == 'binomial':
         mask_id = generate_binomial_mask(x.size(0), x.size(1), x.size(2), p=keepratio).to(x.device)
-    # elif mask == 'continuous':
-    #     mask = generate_continuous_mask(x.size(0), x.size(1)).to(x.device)
-    # elif mask == 'all_true':
-    #     mask = x.new_full((x.size(0), x.size(1)), True, dtype=torch.bool)
-    # elif mask == 'all_false':
-    #     mask = x.new_full((x.size(0), x.size(1)), False, dtype=torch.bool)
-    # elif mask == 'mask_last':
-    #     mask = x.new_full((x.size(0), x.size(1)), True, dtype=torch.bool)
-    #     mask[:, -1] = False
-
-    # mask &= nan_mask
     x[~mask_id] = 0
     return x
 

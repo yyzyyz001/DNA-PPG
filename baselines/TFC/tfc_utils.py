@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import sys
-sys.path.append("../../../papagei-foundation-model/")
+sys.path.append("../../../DNA_PPG/")
 import torch.fft as fft
 import augmentations
 import joblib
@@ -15,16 +15,6 @@ from torch_ecg._preprocessors import Normalize
 class TFCDataset(Dataset):
 
     def __init__(self, df, fs_target, config, normalization=True, simclr=True, transform=None):
-        """
-        Args:
-            df (pandas.DataFrame): Dataframe consisting of filename and label name
-            path (string): directory path to vitaldb pickle files
-            label_name (string): label name to extract from df
-            waveform (string): waveform name to extract from pickle
-            normalization (boolean): whether to normalize signal or not
-            transform (torchvision.transforms.Compose): Data augmentation or transforms for the signal
-        """
-
         self.normalization = normalization
         self.transform = transform 
         self.simclr = simclr
@@ -132,9 +122,7 @@ class NTXentLoss_poly(torch.nn.Module):
         pt = torch.mean(onehot_label* torch.nn.functional.softmax(logits,dim=-1))
 
         epsilon = self.batch_size
-        # loss = CE/ (2 * self.batch_size) + epsilon*(1-pt) # replace 1 by 1/self.batch_size
         loss = CE / (2 * self.batch_size) + epsilon * (1/self.batch_size - pt)
-        # loss = CE / (2 * self.batch_size)
 
         return loss
 
