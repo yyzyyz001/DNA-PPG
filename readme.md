@@ -100,15 +100,15 @@ python outcome_classification_all.py --model ckpt/dna_ppg.pt
 The core logic and pre-trained resources are organized as follows:
 
 - **`ckpt/dna_ppg.pt`**:
-   The **official pre-trained checkpoint** of DNA-PPG.
+  The **official pre-trained checkpoint** of DNA-PPG.
   - It contains the weights of the **ResNet-1D** encoder (approx. 4.99M parameters).
-  - Trained on the full dataset (VitalDB + MESA, 10.7M segments) using the optimal joint strategy (α=0.7\alpha=0.7α=0.7) as reported in the paper.
+  - Trained on the full dataset (VitalDB + MESA, 10.7M segments) using the optimal joint strategy ($\alpha=0.7$) as reported in the paper.
   - This file should be used to initialize the backbone for all downstream evaluations.
 - **`models/`**:
-   Contains the definition of the ResNet-1D backbone.
+  Contains the definition of the ResNet-1D backbone.
 - **`losses.py`**:
-  - `loss_morph`: Implements **Eq. (5)** from the paper, utilizing the soft weights wijw_{ij}wij to preserve morphology-invariant neighborhoods.
-  - `loss_phys`: Implements **Eq. (11)**, calculating the affinity matrix AAA based on continuous physiological semantic distances.
+  - `loss_morph`: Implements **Eq. (5)** from the paper, utilizing the soft weights $w_{ij}$ to preserve morphology-invariant neighborhoods.
+  - `loss_phys`: Implements **Eq. (11)**, calculating the affinity matrix $A$ based on continuous physiological semantic distances.
 
 
 
